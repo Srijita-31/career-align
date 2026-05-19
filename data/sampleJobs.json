@@ -1,0 +1,35 @@
+[
+  {
+    "source": "Sample Feed",
+    "id": "sample-1",
+    "title": "Software Engineering Intern",
+    "company": "Campus Labs",
+    "location": "Remote",
+    "url": "https://example.com/jobs/software-engineer-intern",
+    "tags": ["javascript", "react", "html", "css", "internship"],
+    "description": "An entry-level internship focused on frontend engineering using React, JavaScript, and web technologies.",
+    "created_at": "2026-05-01"
+  },
+  {
+    "source": "Sample Feed",
+    "id": "sample-2",
+    "title": "Data Science Intern",
+    "company": "EduAI",
+    "location": "Remote",
+    "url": "https://example.com/jobs/data-science-intern",
+    "tags": ["python", "pandas", "machine learning", "data science", "internship"],
+    "description": "Support an AI team with data cleaning, model evaluation, and Python scripting for real-world education datasets.",
+    "created_at": "2026-04-28"
+  },
+  {
+    "source": "Sample Feed",
+    "id": "sample-3",
+    "title": "Backend Developer Intern",
+    "company": "CloudWave",
+    "location": "Anywhere",
+    "url": "https://example.com/jobs/backend-developer-intern",
+    "tags": ["node", "express", "mongodb", "api", "internship"],
+    "description": "Build backend REST APIs for a cloud-first platform using Node.js, Express, and MongoDB.",
+    "created_at": "2026-04-22"
+  }
+]

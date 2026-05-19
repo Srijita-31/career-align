@@ -1,0 +1,41 @@
+{
+  "requestsFinished": 6,
+  "requestsFailed": 0,
+  "requestsRetries": 1,
+  "requestsFailedPerMinute": 0,
+  "requestsFinishedPerMinute": 8,
+  "requestMinDurationMillis": 6083,
+  "requestMaxDurationMillis": 9299,
+  "requestTotalFailedDurationMillis": 0,
+  "requestTotalFinishedDurationMillis": 43564,
+  "crawlerStartedAt": "2026-05-19T17:55:16.212Z",
+  "crawlerFinishedAt": "2026-05-19T17:56:03.063Z",
+  "statsPersistedAt": "2026-05-19T17:56:03.063Z",
+  "crawlerRuntimeMillis": 47050,
+  "crawlerLastStartTimestamp": 1779213316013,
+  "requestRetryHistogram": [
+    5,
+    1
+  ],
+  "statsId": 4,
+  "requestAvgFailedDurationMillis": null,
+  "requestAvgFinishedDurationMillis": 7261,
+  "requestTotalDurationMillis": 43564,
+  "requestsTotal": 6,
+  "requestsWithStatusCode": {
+    "200": 6,
+    "403": 1
+  },
+  "errors": {},
+  "retryErrors": {
+    "E:\\career align\\node_modules\\@crawlee\\basic\\internals\\basic-crawler.js:913:19": {
+      "missing error code": {
+        "Error": {
+          "Request blocked - received 403 status code.": {
+            "count": 1
+          }
+        }
+      }
+    }
+  }
+}

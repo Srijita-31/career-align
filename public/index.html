@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Career Align</title>
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header>
+        <h1>Career Align</h1>
+        <p>Upload your resume and profile to find student jobs and internships that match your skills.</p>
+      </header>
+
+      <main>
+        <section class="form-panel">
+          <form id="matchForm">
+            <div class="field-group">
+              <label for="name">Name</label>
+              <input id="name" name="name" placeholder="Jane Doe" required />
+            </div>
+            <div class="field-group">
+              <label for="email">Email</label>
+              <input id="email" name="email" type="email" placeholder="jane@example.com" required />
+            </div>
+            <div class="field-group">
+              <label for="education">Education</label>
+              <input id="education" name="education" placeholder="B.Sc. Computer Science" />
+            </div>
+            <div class="field-group">
+              <label for="experienceLevel">Level</label>
+              <select id="experienceLevel" name="experienceLevel">
+                <option>Student</option>
+                <option>Intern</option>
+                <option>Fresher</option>
+                <option>Entry Level</option>
+                <option>Mid Level</option>
+                <option>Senior</option>
+              </select>
+            </div>
+            <div class="field-group">
+              <label for="desiredRole">Desired Role</label>
+              <input id="desiredRole" name="desiredRole" placeholder="Software Engineer, Developer" />
+            </div>
+            <div class="field-group">
+              <label for="location">Preferred Location</label>
+              <input id="location" name="location" placeholder="Remote / Anywhere" />
+            </div>
+            <fieldset class="field-group preference-group">
+              <legend>Work preference</legend>
+              <label><input type="radio" name="workPreference" value="remote" checked /> Remote</label>
+              <label><input type="radio" name="workPreference" value="onsite" /> Onsite</label>
+              <label><input type="radio" name="workPreference" value="hybrid" /> Hybrid</label>
+            </fieldset>
+            <div class="field-group">
+              <label for="skills">Skills (comma separated)</label>
+              <textarea id="skills" name="skills" rows="3" placeholder="JavaScript, Python, React"></textarea>
+            </div>
+            <div class="field-group">
+              <label for="resume">Resume file</label>
+              <input id="resume" name="resume" type="file" accept=".pdf,.docx,.txt" />
+            </div>
+            <div class="form-actions">
+              <button type="submit">Find Matches</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="results-panel">
+          <div id="resultsHeading" class="results-heading">
+            <h2>Recommendations</h2>
+            <p id="resultsDescription">Submit your profile to receive aligned job and internship recommendations.</p>
+          </div>
+          <div id="results"></div>
+        </section>
+      </main>
+    </div>
+
+    <script src="app.js"></script>
+  </body>
+</html>
