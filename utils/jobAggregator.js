@@ -1,9 +1,12 @@
 const { crawlJobSources } = require('./sourceCrawlers');
 const { getAllJobs, storeJobs } = require('./db');
-const seedJobs = require('../data/seedJobs');
 
 const normalize = (value) => String(value || '').toLowerCase();
 const splitTerms = (text = '') => normalize(text).split(/[^a-z0-9]+/).filter(Boolean);
+const isValidUrl = (value) => {
+  const url = String(value || '').trim();
+  return /^https?:\/\//i.test(url) && !/localhost|127\.0\.0\.1|example\.com|example\.|placeholder|dummy|fallback/i.test(url);
+};
 
 const citiesIndia = [
   'bangalore', 'hyderabad', 'pune', 'chennai', 'mumbai', 'kolkata', 'gurgaon', 'noida', 'delhi', 'ahmedabad', 'remote india', 'india',
@@ -130,27 +133,19 @@ const dedupeJobs = (jobs) => {
 };
 
 const aggregateJobs = async (profile) => {
-  let crawledJobs = [];
-  try {
-    crawledJobs = await crawlJobSources(profile);
-  } catch (error) {
-    console.error('[AGGREGATOR] Error crawling jobs:', error);
-  }
-
-  if (crawledJobs.length > 0) {
-    const report = await storeJobs(crawledJobs);
-    console.log(`[DB] Stored scraped jobs: inserted ${report.inserted}, updated ${report.updated}, skipped ${report.skipped}`);
-    return dedupeJobs(crawledJobs);
-  }
-
   const storedJobs = await getAllJobs();
   if (storedJobs.length > 0) {
-    console.log(`[AGGREGATOR] Using ${storedJobs.length} persisted jobs from the database`);
+    console.log(`[AGGREGATOR] Returning ${storedJobs.length} persisted live jobs`);
     return dedupeJobs(storedJobs);
   }
 
-  console.log('[AGGREGATOR] No scraped jobs available; falling back to emergency seed dataset');
-  return dedupeJobs(seedJobs);
+  console.log('[AGGREGATOR] No persisted jobs available; scraping live sources for this match request');
+  const scrapedJobs = await crawlJobSources(profile);
+  const summary = await storeJobs(scrapedJobs);
+  const refreshedJobs = await getAllJobs();
+  console.log(`[AGGREGATOR] Scraped ${scrapedJobs.length} live jobs; inserted ${summary.inserted}, updated ${summary.updated}, invalid ${summary.invalid}`);
+  console.log(`[AGGREGATOR] Matcher can read ${refreshedJobs.length} persisted jobs after scrape`);
+  return dedupeJobs(refreshedJobs);
 };
 
 const computeMatchScore = (profile, job) => {
@@ -218,12 +213,20 @@ const computeMatchScore = (profile, job) => {
 };
 
 const matchJobs = (profile, jobs, threshold = 0.4) => {
-  const scored = jobs
+  const validJobs = jobs.filter((job) => {
+    const sourcePlatform = String(job.source_platform || job.source || '').toLowerCase();
+    return job.title && job.apply_url && isValidUrl(job.apply_url) && sourcePlatform !== 'fallback';
+  });
+
+  console.log(`[AGGREGATOR] Matching ${validJobs.length} live jobs against profile with threshold ${threshold}`);
+
+  const scored = validJobs
     .map((job) => ({ ...job, ...computeMatchScore(profile, job) }))
     .filter((job) => job.score >= threshold)
     .sort((a, b) => b.score - a.score)
     .slice(0, 25);
 
+  console.log(`[AGGREGATOR] ${scored.length} jobs passed the threshold`);
   return scored;
 };
 

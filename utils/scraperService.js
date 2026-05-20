@@ -1,5 +1,5 @@
 const { crawlJobSources } = require('./sourceCrawlers');
-const { storeJobs } = require('./db');
+const { getAllJobs, storeJobs } = require('./db');
 
 const DEFAULT_PROFILE = {
   desiredRole: 'software engineer',
@@ -18,10 +18,19 @@ const refreshJobs = async (profile = DEFAULT_PROFILE) => {
 
   const jobs = await crawlJobSources(effectiveProfile);
   const summary = await storeJobs(jobs);
+  const persistedJobs = await getAllJobs();
+  const verifiedInserted = persistedJobs.filter((job) =>
+    jobs.some((scraped) => scraped.apply_url === job.apply_url),
+  ).length;
+  console.log(`[DB] Scraped ${jobs.length} live jobs from sources`);
   console.log(`[DB] Inserted ${summary.inserted} new jobs`);
   console.log(`[DB] Updated ${summary.updated} existing jobs`);
   console.log(`[DB] Skipped ${summary.skipped} duplicates`);
-  return { scrapedCount: jobs.length, ...summary };
+  console.log(`[DB] Verified ${verifiedInserted} scraped jobs available for matching`);
+  if (jobs.length === 0) {
+    console.warn('[SCRAPER] No live jobs were scraped from configured sources.');
+  }
+  return { scrapedCount: jobs.length, verifiedInserted, totalPersisted: persistedJobs.length, ...summary };
 };
 
 if (require.main === module) {

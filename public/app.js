@@ -6,6 +6,8 @@ const sourceLogos = {
   LinkedIn: 'LI',
   Naukri: 'NK',
   Internshala: 'IN',
+  RemoteOK: 'RO',
+  WeWorkRemotely: 'WW',
   Foundit: 'FI',
   Glassdoor: 'GD',
   Indeed: 'ID',
@@ -35,17 +37,20 @@ const renderChips = (chips) =>
 
 const renderJobs = (jobs) => {
   if (!jobs.length) {
-    resultsEl.innerHTML = '<p>No relevant jobs were found. Try broadening your skills, updating your role, or changing location preference.</p>';
+    resultsEl.innerHTML = '<p>No jobs found from live sources.</p>';
     return;
   }
 
   resultsEl.innerHTML = jobs
     .map((job, index) => {
-      const logo = sourceLogos[job.source] || job.source.slice(0, 2).toUpperCase();
+      const source = job.source_platform || job.source || 'Live';
+      const applyUrl = job.apply_url || job.url;
+      const logo = sourceLogos[source] || source.slice(0, 2).toUpperCase();
       const matchedSkills = job.matchedSkills?.length ? job.matchedSkills.join(', ') : 'None yet';
       const missingSkills = job.missingSkills?.length ? job.missingSkills.join(', ') : 'Not enough detail available';
       const reasons = job.why?.map((reason) => `<li>${reason}</li>`).join('') || '<li>Relevant match</li>';
       const scorePercentage = Math.round((job.score || 0) * 100);
+      const description = job.description ? `<p>${job.description.slice(0, 220)}...</p>` : '';
 
       return `
         <article class="job-card ${index === 0 ? 'best-card' : ''}">
@@ -54,16 +59,16 @@ const renderJobs = (jobs) => {
             ${scorePercentage >= 75 ? '<span class="badge best-match">Best Match</span>' : ''}
             <span class="match-score">${scorePercentage}%</span>
           </div>
-          <h3><a href="${job.url}" target="_blank" rel="noopener noreferrer">${job.title}</a></h3>
+          <h3><a href="${applyUrl}" target="_blank" rel="noopener noreferrer">${job.title}</a></h3>
           <div class="job-meta small">
             <span>${job.company}</span>
             <span>${job.location}</span>
-            <span>${job.source}</span>
+            <span>${source}</span>
           </div>
           <div class="chips-row">
-            ${renderChips([job.workMode, job.jobType, job.location])}
+            ${renderChips([job.work_mode || job.workMode, job.job_type || job.jobType, job.location])}
           </div>
-          <p>${job.description?.slice(0, 220) || 'No description available.'}...</p>
+          ${description}
           <div class="job-details">
             <div><strong>Matched Skills:</strong> ${matchedSkills}</div>
             <div><strong>Missing Skills:</strong> ${missingSkills}</div>
@@ -72,6 +77,7 @@ const renderJobs = (jobs) => {
             <strong>Why recommended:</strong>
             <ul>${reasons}</ul>
           </div>
+          <a class="apply-link" href="${applyUrl}" target="_blank" rel="noopener noreferrer">Apply</a>
         </article>
       `;
     })
@@ -90,20 +96,27 @@ form.addEventListener('submit', async (event) => {
       body: formData,
     });
 
+    const data = await response.json();
     if (!response.ok) {
-      throw new Error('Request failed');
+      throw new Error(data.message || 'Request failed');
     }
 
-    const data = await response.json();
-    if (data.recommendations?.length) {
-      resultsDescription.textContent = `Showing ${data.recommendations.length} high-quality recommendations for ${data.profile.name}.`;
+    if (data.success === false) {
+      resultsDescription.textContent = data.message || 'No live jobs found from real sources.';
+      renderJobs([]);
+      return;
+    }
+
+    const jobs = data.jobs || data.recommendations || [];
+    if (jobs.length) {
+      resultsDescription.textContent = `Showing ${jobs.length} live recommendations for ${data.profile?.name || 'your profile'}.`;
     } else {
       resultsDescription.textContent = 'No high-quality matches were found. Adjust your preferences and try again.';
     }
-    renderJobs(data.recommendations || []);
+    renderJobs(jobs);
   } catch (error) {
     resultsEl.innerHTML = `<p>Unable to retrieve matches. Please try again later.</p>`;
-    resultsDescription.textContent = '';
+    resultsDescription.textContent = error.message || '';
     console.error(error);
   }
 });

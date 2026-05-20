@@ -25,13 +25,41 @@ app.post('/api/match', upload.single('resume'), async (req, res) => {
     }
 
     const jobs = await aggregateJobs(parsed);
-    const matches = matchJobs(parsed, jobs, 0.8);
+    if (!jobs.length) {
+      return res.status(502).json({
+        success: false,
+        error: 'NO_LIVE_JOBS',
+        message: 'No live jobs could be scraped from sources.',
+        profile: parsed,
+        jobs: [],
+        recommendations: [],
+      });
+    }
+
+    const matches = matchJobs(parsed, jobs, 0);
+    if (!matches.length) {
+      return res.status(502).json({
+        success: false,
+        error: 'NO_VALID_LIVE_JOBS',
+        message: 'Live jobs were scraped, but none had the required title and apply URL.',
+        profile: parsed,
+        jobs: [],
+        recommendations: [],
+      });
+    }
+
     const hasStrongMatches = matches.some((job) => job.score >= 0.8);
 
-    res.json({ profile: parsed, recommendations: matches, hasStrongMatches });
+    return res.json({
+      success: true,
+      profile: parsed,
+      jobs: matches,
+      recommendations: matches,
+      hasStrongMatches,
+    });
   } catch (error) {
     console.error('Error matching jobs:', error);
-    res.status(500).json({ error: 'Unable to match jobs right now.' });
+    res.status(500).json({ success: false, message: 'Unable to match jobs right now.' });
   }
 });
 
