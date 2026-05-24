@@ -1,5 +1,7 @@
+require('dotenv').config({ quiet: true });
+
 const { crawlJobSources } = require('./sourceCrawlers');
-const { getAllJobs, storeJobs } = require('./db');
+const { getJobCount, storeJobs } = require('./db');
 
 const DEFAULT_PROFILE = {
   desiredRole: 'software engineer',
@@ -10,40 +12,31 @@ const DEFAULT_PROFILE = {
 
 const refreshJobs = async (profile = DEFAULT_PROFILE) => {
   const effectiveProfile = {
-    desiredRole: profile.desiredRole || DEFAULT_PROFILE.desiredRole,
-    skills: profile.skills && profile.skills.length ? profile.skills : DEFAULT_PROFILE.skills,
-    location: profile.location || DEFAULT_PROFILE.location,
-    workPreference: profile.workPreference || DEFAULT_PROFILE.workPreference,
+    ...DEFAULT_PROFILE,
+    ...profile,
+    skills: profile.skills?.length ? profile.skills : DEFAULT_PROFILE.skills,
   };
 
   const jobs = await crawlJobSources(effectiveProfile);
   const summary = await storeJobs(jobs);
-  const persistedJobs = await getAllJobs();
-  const verifiedInserted = persistedJobs.filter((job) =>
-    jobs.some((scraped) => scraped.apply_url === job.apply_url),
-  ).length;
-  console.log(`[DB] Scraped ${jobs.length} live jobs from sources`);
-  console.log(`[DB] Inserted ${summary.inserted} new jobs`);
-  console.log(`[DB] Updated ${summary.updated} existing jobs`);
-  console.log(`[DB] Skipped ${summary.skipped} duplicates`);
-  console.log(`[DB] Verified ${verifiedInserted} scraped jobs available for matching`);
-  if (jobs.length === 0) {
-    console.warn('[SCRAPER] No live jobs were scraped from configured sources.');
-  }
-  return { scrapedCount: jobs.length, verifiedInserted, totalPersisted: persistedJobs.length, ...summary };
+  const totalPersisted = await getJobCount();
+
+  console.log(`[SCRAPER] Scraped ${jobs.length} jobs from live sources`);
+  console.log(`[DB] Inserted ${summary.inserted}, updated ${summary.updated}, invalid ${summary.invalid}`);
+
+  return { scrapedCount: jobs.length, totalPersisted, ...summary };
 };
 
 if (require.main === module) {
-  (async () => {
-    try {
-      const result = await refreshJobs();
+  refreshJobs()
+    .then((result) => {
       console.log('[SCRAPER] Completed refresh', result);
       process.exit(0);
-    } catch (error) {
+    })
+    .catch((error) => {
       console.error('[SCRAPER] Refresh failed', error);
       process.exit(1);
-    }
-  })();
+    });
 }
 
 module.exports = { refreshJobs };

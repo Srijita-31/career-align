@@ -37,7 +37,7 @@ const renderChips = (chips) =>
 
 const renderJobs = (jobs) => {
   if (!jobs.length) {
-    resultsEl.innerHTML = '<p>No jobs found from live sources.</p>';
+    resultsEl.innerHTML = '<p>No embedded jobs found yet. Refresh scraped jobs and try again.</p>';
     return;
   }
 
@@ -46,8 +46,7 @@ const renderJobs = (jobs) => {
       const source = job.source_platform || job.source || 'Live';
       const applyUrl = job.apply_url || job.url;
       const logo = sourceLogos[source] || source.slice(0, 2).toUpperCase();
-      const matchedSkills = job.matchedSkills?.length ? job.matchedSkills.join(', ') : 'None yet';
-      const missingSkills = job.missingSkills?.length ? job.missingSkills.join(', ') : 'Not enough detail available';
+      const matchedSkills = job.matchedSkills?.length ? job.matchedSkills.join(', ') : 'Not detected';
       const reasons = job.why?.map((reason) => `<li>${reason}</li>`).join('') || '<li>Relevant match</li>';
       const scorePercentage = Math.round((job.score || 0) * 100);
       const description = job.description ? `<p>${job.description.slice(0, 220)}...</p>` : '';
@@ -56,7 +55,7 @@ const renderJobs = (jobs) => {
         <article class="job-card ${index === 0 ? 'best-card' : ''}">
           <div class="job-card-top">
             <span class="source-badge">${logo}</span>
-            ${scorePercentage >= 75 ? '<span class="badge best-match">Best Match</span>' : ''}
+            ${scorePercentage >= 75 ? '<span class="badge best-match">High Similarity</span>' : ''}
             <span class="match-score">${scorePercentage}%</span>
           </div>
           <h3><a href="${applyUrl}" target="_blank" rel="noopener noreferrer">${job.title}</a></h3>
@@ -70,8 +69,8 @@ const renderJobs = (jobs) => {
           </div>
           ${description}
           <div class="job-details">
-            <div><strong>Matched Skills:</strong> ${matchedSkills}</div>
-            <div><strong>Missing Skills:</strong> ${missingSkills}</div>
+            <div><strong>Similarity score:</strong> ${scorePercentage}%</div>
+            <div><strong>Detected overlap:</strong> ${matchedSkills}</div>
           </div>
           <div class="recommendation-why">
             <strong>Why recommended:</strong>
@@ -87,7 +86,7 @@ const renderJobs = (jobs) => {
 form.addEventListener('submit', async (event) => {
   event.preventDefault();
   renderSkeletons();
-  resultsDescription.textContent = 'Searching and ranking jobs based on your profile, location, and role preference.';
+  resultsDescription.textContent = 'Embedding your input and comparing it with stored job embeddings.';
 
   const formData = new FormData(form);
   try {
@@ -109,9 +108,9 @@ form.addEventListener('submit', async (event) => {
 
     const jobs = data.jobs || data.recommendations || [];
     if (jobs.length) {
-      resultsDescription.textContent = `Showing ${jobs.length} live recommendations for ${data.profile?.name || 'your profile'}.`;
+      resultsDescription.textContent = `Showing ${jobs.length} similarity-ranked jobs for ${data.profile?.name || 'your profile'}.`;
     } else {
-      resultsDescription.textContent = 'No high-quality matches were found. Adjust your preferences and try again.';
+      resultsDescription.textContent = 'No embedded jobs are available yet. Refresh scraped jobs and try again.';
     }
     renderJobs(jobs);
   } catch (error) {
