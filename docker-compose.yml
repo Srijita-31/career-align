@@ -1,0 +1,35 @@
+services:
+  app:
+    build: .
+    container_name: career-align-app
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgres://career_align:career_align@postgres:5432/career_align
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: career-align-postgres
+    environment:
+      POSTGRES_DB: career_align
+      POSTGRES_USER: career_align
+      POSTGRES_PASSWORD: career_align
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U career_align -d career_align"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  postgres-data:
