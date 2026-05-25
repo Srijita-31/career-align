@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS jobs (
   description TEXT NOT NULL DEFAULT '',
   skills JSONB NOT NULL DEFAULT '[]'::jsonb,
   posted_date TEXT NOT NULL DEFAULT '',
-  embedding vector(1536) NOT NULL,
+  embedding vector(384) NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

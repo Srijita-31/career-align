@@ -2,6 +2,7 @@ const fs = require('fs/promises');
 const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
+const { enrichProfile } = require('./enrichment');
 
 const defaultSkills = [
   'javascript', 'python', 'java', 'c++', 'c#', 'react', 'angular', 'node',
@@ -57,18 +58,22 @@ const parseResume = async (form, resumePath) => {
     .filter(Boolean);
 
   const skills = Array.from(new Set([...skillsFromResume, ...rawSkills].map((s) => s.toLowerCase())));
+  const locationScope = form.locationScope || 'india';
+  const location = locationScope === 'outside-india' ? 'Outside India' : 'India';
 
-  return {
+  return enrichProfile({
     name: form.name || 'Student',
     email: form.email || '',
     desiredRole: form.desiredRole || '',
-    location: form.location || '',
+    semanticSearch: form.semanticSearch || '',
+    location,
+    locationScope,
     workPreference: form.workPreference || 'remote',
     education: form.education || '',
     experienceLevel: form.experienceLevel || 'Student',
     skills,
     summary: normalize(`${form.summary || ''} ${resumeText}`)
-  };
+  });
 };
 
 module.exports = { parseResume };
