@@ -187,6 +187,10 @@ button:hover {
   margin-bottom: 14px;
 }
 
+.role-row {
+  margin-top: -6px;
+}
+
 .chip {
   display: inline-flex;
   align-items: center;
@@ -205,10 +209,47 @@ button:hover {
   font-size: 0.92rem;
 }
 
+.match-breakdown {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 8px;
+  margin: 14px 0;
+}
+
+.match-breakdown div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid rgba(148, 163, 184, 0.12);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.match-breakdown span {
+  color: var(--muted);
+  font-size: 0.76rem;
+}
+
+.match-breakdown strong {
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
 .recommendation-why ul {
   margin: 10px 0 0;
   padding-left: 18px;
   color: var(--muted);
+}
+
+.recommendation-why p {
+  margin-top: 8px;
+  line-height: 1.55;
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .apply-link {

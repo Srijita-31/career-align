@@ -30,7 +30,7 @@ app.post('/api/match', upload.single('resume'), async (req, res) => {
       profile,
       jobs,
       recommendations: jobs,
-      hasStrongMatches: jobs.some((job) => job.score >= 0.75),
+      hasStrongMatches: jobs.some((job) => job.score >= 75),
     });
   } catch (error) {
     console.error('Error matching jobs:', error);

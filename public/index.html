@@ -25,11 +25,7 @@
               <input id="email" name="email" type="email" placeholder="jane@example.com" required />
             </div>
             <div class="field-group">
-              <label for="education">Education</label>
-              <input id="education" name="education" placeholder="B.Sc. Computer Science" />
-            </div>
-            <div class="field-group">
-              <label for="experienceLevel">Level</label>
+              <label for="experienceLevel">Experience</label>
               <select id="experienceLevel" name="experienceLevel">
                 <option>Student</option>
                 <option>Intern</option>
@@ -40,19 +36,20 @@
               </select>
             </div>
             <div class="field-group">
-              <label for="desiredRole">Desired Role</label>
-              <input id="desiredRole" name="desiredRole" placeholder="Software Engineer, Developer" />
+              <label for="workPreference">Work mode</label>
+              <select id="workPreference" name="workPreference">
+                <option value="onsite">Onsite</option>
+                <option value="hybrid">Hybrid</option>
+                <option value="remote" selected>Remote</option>
+              </select>
             </div>
             <div class="field-group">
-              <label for="location">Preferred Location</label>
-              <input id="location" name="location" placeholder="Remote / Anywhere" />
+              <label for="locationScope">Location</label>
+              <select id="locationScope" name="locationScope">
+                <option value="india" selected>Within India</option>
+                <option value="outside-india">Outside India</option>
+              </select>
             </div>
-            <fieldset class="field-group preference-group">
-              <legend>Work preference</legend>
-              <label><input type="radio" name="workPreference" value="remote" checked /> Remote</label>
-              <label><input type="radio" name="workPreference" value="onsite" /> Onsite</label>
-              <label><input type="radio" name="workPreference" value="hybrid" /> Hybrid</label>
-            </fieldset>
             <div class="field-group">
               <label for="skills">Skills (comma separated)</label>
               <textarea id="skills" name="skills" rows="3" placeholder="JavaScript, Python, React"></textarea>
@@ -77,6 +74,6 @@
       </main>
     </div>
 
-    <script src="app.js"></script>
+    <script src="app.js?v=3"></script>
   </body>
 </html>
