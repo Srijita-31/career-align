@@ -3,14 +3,9 @@ const path = require('path');
 const pdfParse = require('pdf-parse');
 const mammoth = require('mammoth');
 const { enrichProfile } = require('./enrichment');
+const { appConfig, rules } = require('../config');
 
-const defaultSkills = [
-  'javascript', 'python', 'java', 'c++', 'c#', 'react', 'angular', 'node',
-  'express', 'sql', 'postgresql', 'mongodb', 'html', 'css', 'git', 'docker',
-  'kubernetes', 'machine learning', 'data science', 'tensorflow', 'pandas',
-  'excel', 'leadership', 'communication', 'project management', 'aws', 'azure',
-  'firebase', 'typescript', 'rest api', 'graphql'
-];
+const defaultSkills = rules.resumeSkills;
 
 const normalize = (text) => text
   .toLowerCase()
@@ -59,7 +54,7 @@ const parseResume = async (form, resumePath) => {
 
   const skills = Array.from(new Set([...skillsFromResume, ...rawSkills].map((s) => s.toLowerCase())));
   const locationScope = form.locationScope || 'india';
-  const location = locationScope === 'outside-india' ? 'Outside India' : 'India';
+  const location = locationScope === 'outside-india' ? 'Outside India' : appConfig.defaultLocation;
 
   return enrichProfile({
     name: form.name || 'Student',
@@ -68,7 +63,7 @@ const parseResume = async (form, resumePath) => {
     semanticSearch: form.semanticSearch || '',
     location,
     locationScope,
-    workPreference: form.workPreference || 'remote',
+    workPreference: form.workPreference || appConfig.defaultWorkPreference,
     education: form.education || '',
     experienceLevel: form.experienceLevel || 'Student',
     skills,

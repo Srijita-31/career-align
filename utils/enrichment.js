@@ -1,4 +1,5 @@
 const normalizeText = (value) => String(value || '').toLowerCase();
+const { rules } = require('../config');
 
 const normalizeKeyPart = (value) => normalizeText(value)
   .replace(/&/g, ' and ')
@@ -14,100 +15,17 @@ const titleCase = (value) => String(value || '')
   .map((part) => `${part[0].toUpperCase()}${part.slice(1)}`)
   .join(' ');
 
-const SKILL_ALIASES = new Map([
-  ['reactjs', 'ReactJS'],
-  ['react js', 'ReactJS'],
-  ['react', 'ReactJS'],
-  ['next js', 'Next.js'],
-  ['nextjs', 'Next.js'],
-  ['nodejs', 'Node.js'],
-  ['node js', 'Node.js'],
-  ['node', 'Node.js'],
-  ['express', 'Express'],
-  ['javascript', 'JavaScript'],
-  ['js', 'JavaScript'],
-  ['typescript', 'TypeScript'],
-  ['ts', 'TypeScript'],
-  ['html', 'HTML'],
-  ['css', 'CSS'],
-  ['tailwind', 'Tailwind CSS'],
-  ['sass', 'Sass'],
-  ['python', 'Python'],
-  ['java', 'Java'],
-  ['c++', 'C++'],
-  ['c#', 'C#'],
-  ['sql', 'SQL'],
-  ['postgresql', 'PostgreSQL'],
-  ['postgres', 'PostgreSQL'],
-  ['mysql', 'MySQL'],
-  ['mongodb', 'MongoDB'],
-  ['firebase', 'Firebase'],
-  ['aws', 'AWS'],
-  ['azure', 'Azure'],
-  ['gcp', 'GCP'],
-  ['docker', 'Docker'],
-  ['kubernetes', 'Kubernetes'],
-  ['git', 'Git'],
-  ['graphql', 'GraphQL'],
-  ['rest api', 'REST API'],
-  ['machine learning', 'Machine Learning'],
-  ['ml', 'Machine Learning'],
-  ['deep learning', 'Deep Learning'],
-  ['natural language processing', 'Natural Language Processing'],
-  ['nlp', 'Natural Language Processing'],
-  ['data science', 'Data Science'],
-  ['pandas', 'Pandas'],
-  ['tensorflow', 'TensorFlow'],
-  ['pytorch', 'PyTorch'],
-  ['llm', 'LLM'],
-  ['rag', 'RAG'],
-]);
-
-const PHRASE_SKILLS = [
-  'machine learning',
-  'deep learning',
-  'natural language processing',
-  'data science',
-  'react js',
-  'next js',
-  'node js',
-  'rest api',
-  'tailwind css',
-];
-
-const COMMON_JOB_SKILLS = [
-  ...SKILL_ALIASES.keys(),
-  'angular',
-  'vue',
-  'redux',
-  'ci cd',
-  'devops',
-  'terraform',
-  'linux',
-  'api',
-  'microservices',
-  'excel',
-  'power bi',
-  'tableau',
-];
-
-const ROLE_FAMILIES = [
-  { name: 'Frontend Engineering', pattern: /frontend|front end|react|javascript|html|css|ui engineer|web developer/ },
-  { name: 'Backend Engineering', pattern: /backend|back end|node|api|server|java developer|python developer|microservice/ },
-  { name: 'Full Stack Engineering', pattern: /full stack|fullstack|mern|mean/ },
-  { name: 'Data and Analytics', pattern: /data analyst|analytics|business analyst|sql|tableau|power bi|excel/ },
-  { name: 'AI and Machine Learning', pattern: /machine learning|deep learning|ai|ml engineer|data scientist|nlp|llm|rag/ },
-  { name: 'Cloud and DevOps', pattern: /devops|cloud|aws|azure|gcp|docker|kubernetes|sre|platform engineer/ },
-  { name: 'Mobile Engineering', pattern: /mobile|android|ios|flutter|react native/ },
-  { name: 'Product and Design', pattern: /product manager|ui ux|ux designer|product designer/ },
-];
-
-const SENIORITY_RULES = [
-  { level: 'Intern', pattern: /intern|internship|trainee/ },
-  { level: 'Entry Level', pattern: /entry level|fresher|graduate|junior|associate/ },
-  { level: 'Mid Level', pattern: /mid level|software engineer|developer|engineer/ },
-  { level: 'Senior', pattern: /senior|lead|principal|staff|architect|manager/ },
-];
+const SKILL_ALIASES = new Map(Object.entries(rules.skillAliases));
+const PHRASE_SKILLS = rules.phraseSkills;
+const COMMON_JOB_SKILLS = [...SKILL_ALIASES.keys(), ...rules.commonJobSkills];
+const ROLE_FAMILIES = rules.roleFamilies.map((role) => ({
+  ...role,
+  pattern: new RegExp(role.pattern),
+}));
+const SENIORITY_RULES = rules.seniorityRules.map((rule) => ({
+  ...rule,
+  pattern: new RegExp(rule.pattern),
+}));
 
 const includesPhrase = (text, phrase) => {
   const normalizedText = normalizeKeyPart(text);

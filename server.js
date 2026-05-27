@@ -5,9 +5,9 @@ const fs = require('fs/promises');
 const express = require('express');
 const multer = require('multer');
 const { parseResume } = require('./utils/resumeParser');
-const { ensureSchema } = require('./utils/db');
+const { countStaleJobEmbeddings, ensureSchema, getRecentScraperRuns, saveRecommendationFeedback } = require('./utils/db');
 const { matchJobs } = require('./utils/jobAggregator');
-const { refreshJobs } = require('./utils/scraperService');
+const { getJobRefreshStatus, queueJobRefresh } = require('./utils/jobRefreshQueue');
 const { startScrapeScheduler } = require('./scheduler/scrapeScheduler');
 
 const upload = multer({ dest: path.join(__dirname, 'tmp') });
@@ -47,11 +47,36 @@ app.post('/api/match', upload.single('resume'), async (req, res) => {
 
 app.post('/api/admin/refresh-jobs', async (req, res) => {
   try {
-    const report = await refreshJobs(req.body || undefined);
-    res.json({ status: 'ok', report });
+    const report = queueJobRefresh(req.body?.profile || req.body || undefined, 'api', {
+      reembedExisting: req.body?.reembedExisting !== false,
+    });
+    res.status(report.queued ? 202 : 200).json({ status: 'ok', report });
   } catch (error) {
-    console.error('Error refreshing jobs:', error);
-    res.status(500).json({ error: error.message || 'Unable to refresh jobs at this time.' });
+    console.error('Error queueing job refresh:', error);
+    res.status(500).json({ error: error.message || 'Unable to queue job refresh at this time.' });
+  }
+});
+
+app.get('/api/admin/refresh-jobs/status', (_, res) => {
+  res.json({ status: 'ok', refresh: getJobRefreshStatus() });
+});
+
+app.get('/api/admin/scraper-runs', async (req, res) => {
+  try {
+    const runs = await getRecentScraperRuns(req.query.limit);
+    res.json({ status: 'ok', runs });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message || 'Unable to load scraper runs.' });
+  }
+});
+
+app.post('/api/feedback', async (req, res) => {
+  try {
+    const feedback = await saveRecommendationFeedback(req.body || {});
+    res.status(201).json({ status: 'ok', feedback });
+  } catch (error) {
+    console.error('Error saving feedback:', error);
+    res.status(400).json({ status: 'error', message: error.message || 'Unable to save feedback.' });
   }
 });
 
@@ -74,6 +99,16 @@ ensureSchema()
     app.listen(PORT, () => {
       console.log(`Career Align portal running on http://localhost:${PORT}`);
     });
+    countStaleJobEmbeddings()
+      .then((count) => {
+        if (count > 0) {
+          const queued = queueJobRefresh(undefined, 'startup_reembed', { reembedExisting: true });
+          console.log(`[DB] Queued re-embedding for ${count} stale job embeddings`, queued);
+        }
+      })
+      .catch((error) => {
+        console.warn('[DB] Unable to check stale job embeddings:', error.message);
+      });
   })
   .catch((error) => {
     console.error('Unable to start Career Align:', error);

@@ -21,6 +21,7 @@ Background refresh
   -> Crawlee job scrapers
   -> Job normalization
   -> Job enrichment
+  -> Background job refresh worker
   -> Job embedding
   -> PostgreSQL jobs table
 ```
@@ -90,9 +91,15 @@ utils/enrichment.js               Skill, role, seniority, and job metadata enric
 utils/embeddings.js               Local/OpenAI embedding generation
 utils/db.js                       PostgreSQL schema, storage, and vector search
 utils/jobAggregator.js            Recommendation orchestration and scoring
+utils/jobRefreshQueue.js          Starts and tracks the background refresh worker
 utils/sourceCrawlers.js           Live job source crawlers
 utils/scraperService.js           Manual scrape refresh entrypoint
 scheduler/scrapeScheduler.js      Scheduled scrape refresh every 6 hours
+workers/jobRefreshWorker.js       Isolated scraping and embedding worker process
+config/app.json                   Job source, default profile, search, and scheduler config
+config/rules.json                 Skill, role family, seniority, and resume parsing rules
+config/scoring.json               Recommendation weights and result limits
+config/sources.json               Source enablement, crawler type, and search URL templates
 docker-compose.yml                App and PostgreSQL services
 ```
 
@@ -121,11 +128,40 @@ server.js
 
 ### `POST /api/admin/refresh-jobs`
 
-Runs the scraper manually and stores refreshed jobs.
+Queues the background worker to scrape and embed refreshed jobs. The API returns immediately while the worker continues separately from the web server.
 
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:4000/api/admin/refresh-jobs" -Method Post
 ```
+
+### `GET /api/admin/refresh-jobs/status`
+
+Checks whether a refresh worker is currently running.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:4000/api/admin/refresh-jobs/status"
+```
+
+### `GET /api/admin/scraper-runs`
+
+Returns recent scraper runs with per-source status, cards seen, extracted jobs, and error messages.
+
+```powershell
+Invoke-RestMethod -Uri "http://localhost:4000/api/admin/scraper-runs?limit=10"
+```
+
+### `POST /api/feedback`
+
+Stores recommendation feedback for later ranking analysis.
+
+Supported actions:
+
+- `relevant`
+- `not_relevant`
+- `too_senior`
+- `wrong_location`
+- `saved`
+- `applied`
 
 ### `GET /api/health`
 
@@ -173,9 +209,24 @@ Extracted job fields include:
 - Source platform
 - Posted date, when available
 
+## Configurable Rules
+
+Most tuning data has been moved out of source code and into config files:
+
+```text
+config/app.json
+config/rules.json
+config/scoring.json
+config/sources.json
+```
+
+Environment variables can still override deployment-specific values such as `JOB_SOURCES`, `JOB_TERM_LIMIT`, `SCRAPE_CRON`, and `SCRAPE_TIMEZONE`.
+
+`config/sources.json` controls which sources are enabled, whether they use Cheerio or Playwright, and the search URL templates used for each platform. Source-specific extraction logic still lives in code because each site has different markup and interaction behavior, but simple source changes no longer require touching crawler code.
+
 ## Enrichment
 
-`utils/enrichment.js` adds structured fields to jobs and profiles. This is rule-based enrichment, not a chat LLM.
+`utils/enrichment.js` adds structured fields to jobs and profiles using rules loaded from `config/rules.json`. This is rule-based enrichment, not a chat LLM.
 
 For jobs, it infers:
 
@@ -268,6 +319,13 @@ created_at
 updated_at
 ```
 
+Scraper observability tables:
+
+```text
+scraper_runs
+scraper_source_results
+```
+
 The embedding column is:
 
 ```text
@@ -288,7 +346,7 @@ The schema is created and migrated at runtime by `ensureSchema()` in `utils/db.j
 
 The app does not display raw vector similarity as the final score. It combines semantic similarity with structured matching.
 
-Current weighted score:
+Current weighted score from `config/scoring.json`:
 
 ```text
 35% skills
@@ -412,9 +470,11 @@ JOB_SOURCES=LinkedIn,Internshala,Indeed,Glassdoor,WeWorkRemotely
 JOB_TERM_LIMIT=6
 ```
 
-## Scheduler
+## Background Worker And Scheduler
 
-`scheduler/scrapeScheduler.js` runs a background job every 6 hours:
+Scraping and embedding now run through `workers/jobRefreshWorker.js`, started by `utils/jobRefreshQueue.js`. This keeps crawler and embedding work out of the request path and out of the main web server process.
+
+`scheduler/scrapeScheduler.js` queues a background refresh every 6 hours:
 
 ```text
 0 */6 * * *
@@ -426,15 +486,22 @@ Timezone:
 Asia/Kolkata
 ```
 
-The scheduled job uses a default software-engineering profile to refresh general job inventory.
+The scheduled job uses the default profile from `config/app.json` to refresh general job inventory.
+
+Run the worker directly:
+
+```powershell
+npm run worker:refresh
+```
 
 ## Current Limitations
 
 - Some job boards expose limited details on search pages, so skill extraction may be incomplete.
 - Scraping can break if source websites change their markup or block crawlers.
 - Recommendation explanations are deterministic templates, not LLM-generated summaries.
-- There are no user accounts, saved jobs, application tracking, or feedback learning yet.
-- The scraper runs in the same Node app process; a production version should move scraping and embedding work into a background worker.
+- There are no user accounts, saved-job dashboards, or application tracking yet.
+- Feedback is stored, but ranking does not yet learn from it automatically.
+- The worker is process-based; a production version should use a durable queue such as BullMQ, RabbitMQ, or a managed job runner.
 
 ## Suggested Next Improvements
 
@@ -443,5 +510,5 @@ The scheduled job uses a default software-engineering profile to refresh general
 - Fetch full job-detail pages where possible.
 - Add stale-job expiry.
 - Add source reliability and job freshness scoring.
-- Add feedback buttons such as relevant, not relevant, too senior, wrong location.
+- Use stored feedback to adjust ranking weights per user and globally.
 - Use an LLM only for grounded enrichment/explanations, while keeping embeddings and structured fields as the source of truth.
