@@ -1,0 +1,15 @@
+{
+  "weights": {
+    "semantic": 30,
+    "skills": 25,
+    "roleFamily": 20,
+    "seniority": 15,
+    "location": 10,
+    "workMode": 0
+  },
+  "semanticNormalization": {
+    "minimumCosine": 0.15,
+    "range": 0.5
+  },
+  "resultLimit": 25
+}

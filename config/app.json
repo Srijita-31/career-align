@@ -1,0 +1,40 @@
+{
+  "jobSources": [
+    "LinkedIn",
+    "Internshala",
+    "Indeed",
+    "Glassdoor",
+    "WeWorkRemotely"
+  ],
+  "jobTermLimit": 6,
+  "defaultSearchTerms": [
+    "software engineer",
+    "frontend developer",
+    "backend developer",
+    "python developer",
+    "react developer",
+    "AI/ML intern",
+    "data analyst",
+    "cloud engineer",
+    "internship",
+    "fresher",
+    "entry level"
+  ],
+  "defaultLocation": "India",
+  "defaultWorkPreference": "remote",
+  "defaultProfile": {
+    "desiredRole": "software engineer",
+    "skills": [
+      "javascript",
+      "python",
+      "react"
+    ],
+    "location": "India",
+    "workPreference": "remote"
+  },
+  "scheduler": {
+    "cron": "0 */6 * * *",
+    "timezone": "Asia/Kolkata",
+    "description": "every 6 hours"
+  }
+}

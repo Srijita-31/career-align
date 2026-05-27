@@ -1,30 +1,45 @@
 require('dotenv').config({ quiet: true });
 
 const { crawlJobSources } = require('./sourceCrawlers');
-const { getJobCount, storeJobs } = require('./db');
+const {
+  createScraperRun,
+  finishScraperRun,
+  getJobCount,
+  reembedStaleJobEmbeddings,
+  storeJobs,
+} = require('./db');
+const { appConfig } = require('../config');
 
-const DEFAULT_PROFILE = {
-  desiredRole: 'software engineer',
-  skills: ['javascript', 'python', 'react'],
-  location: 'India',
-  workPreference: 'remote',
-};
+const DEFAULT_PROFILE = appConfig.defaultProfile;
 
-const refreshJobs = async (profile = DEFAULT_PROFILE) => {
+const refreshJobs = async (profile = DEFAULT_PROFILE, options = {}) => {
   const effectiveProfile = {
     ...DEFAULT_PROFILE,
     ...profile,
     skills: profile.skills?.length ? profile.skills : DEFAULT_PROFILE.skills,
   };
+  const run = await createScraperRun({ profile: effectiveProfile, reason: options.reason || 'worker' });
 
-  const jobs = await crawlJobSources(effectiveProfile);
-  const summary = await storeJobs(jobs);
-  const totalPersisted = await getJobCount();
+  try {
+    const reembedded = options.reembedExisting === false
+      ? { updated: 0 }
+      : await reembedStaleJobEmbeddings({ batchSize: options.reembedBatchSize || 50 });
+    const jobs = await crawlJobSources(effectiveProfile, { runId: run.id });
+    const summary = await storeJobs(jobs);
+    const totalPersisted = await getJobCount();
+    const report = { scrapedCount: jobs.length, totalPersisted, reembeddedCount: reembedded.updated, ...summary };
 
-  console.log(`[SCRAPER] Scraped ${jobs.length} jobs from live sources`);
-  console.log(`[DB] Inserted ${summary.inserted}, updated ${summary.updated}, invalid ${summary.invalid}`);
+    await finishScraperRun({ runId: run.id, status: 'completed', summary: report });
 
-  return { scrapedCount: jobs.length, totalPersisted, ...summary };
+    console.log(`[SCRAPER] Scraped ${jobs.length} jobs from live sources`);
+    console.log(`[DB] Re-embedded ${reembedded.updated} stale jobs`);
+    console.log(`[DB] Inserted ${summary.inserted}, updated ${summary.updated}, invalid ${summary.invalid}`);
+
+    return { runId: run.id, ...report };
+  } catch (error) {
+    await finishScraperRun({ runId: run.id, status: 'failed', errorMessage: error.message });
+    throw error;
+  }
 };
 
 if (require.main === module) {

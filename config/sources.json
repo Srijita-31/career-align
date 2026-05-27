@@ -1,0 +1,85 @@
+{
+  "sources": [
+    {
+      "name": "RemoteOK",
+      "platform": "RemoteOK",
+      "enabled": false,
+      "type": "playwright",
+      "searchUrls": [
+        "https://remoteok.com/remote-{{termSlug}}-jobs"
+      ]
+    },
+    {
+      "name": "WeWorkRemotely",
+      "platform": "WeWorkRemotely",
+      "enabled": true,
+      "type": "cheerio",
+      "searchUrls": [
+        "https://weworkremotely.com/remote-jobs/search?term={{term}}"
+      ]
+    },
+    {
+      "name": "Internshala",
+      "platform": "Internshala",
+      "enabled": true,
+      "type": "playwright",
+      "searchUrls": [
+        "https://internshala.com/internships/{{termSlug}}?location={{location}}"
+      ]
+    },
+    {
+      "name": "LinkedIn",
+      "platform": "LinkedIn",
+      "enabled": true,
+      "type": "cheerio",
+      "searchUrls": [
+        "https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords={{term}}&location={{location}}&start=0"
+      ]
+    },
+    {
+      "name": "Wellfound",
+      "platform": "Wellfound",
+      "enabled": false,
+      "type": "playwright",
+      "searchUrls": [
+        "https://wellfound.com/jobs?query={{term}}&remote=true&locations={{location}}"
+      ]
+    },
+    {
+      "name": "Foundit",
+      "platform": "Foundit",
+      "enabled": false,
+      "type": "playwright",
+      "searchUrls": [
+        "https://www.foundit.in/jobs?searchTerm={{term}}&location={{location}}"
+      ]
+    },
+    {
+      "name": "Naukri",
+      "platform": "Naukri",
+      "enabled": false,
+      "type": "playwright",
+      "searchUrls": [
+        "https://www.naukri.com/{{termSlug}}-jobs-in-india"
+      ]
+    },
+    {
+      "name": "Indeed",
+      "platform": "Indeed",
+      "enabled": true,
+      "type": "playwright",
+      "searchUrls": [
+        "https://in.indeed.com/jobs?q={{term}}&l={{location}}"
+      ]
+    },
+    {
+      "name": "Glassdoor",
+      "platform": "Glassdoor",
+      "enabled": true,
+      "type": "playwright",
+      "searchUrls": [
+        "https://www.glassdoor.co.in/Job/india-{{termSlug}}-jobs-SRCH_IL.0,5_IN115_KO6.htm"
+      ]
+    }
+  ]
+}

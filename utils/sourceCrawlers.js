@@ -1,5 +1,7 @@
 const { CheerioCrawler, RequestList, log } = require('@crawlee/cheerio');
 const { PlaywrightCrawler } = require('@crawlee/playwright');
+const { appConfig, getJobSources, getJobTermLimit, sourceConfig } = require('../config');
+const { recordScraperSourceResult } = require('./db');
 
 const normalize = (value) => String(value || '').trim();
 const cleanText = (value) => normalize(value).replace(/\s+/g, ' ');
@@ -25,76 +27,39 @@ const buildDescription = (title, company, location, extra) => {
 };
 
 const buildSearchTerms = (profile) => {
-  const termLimit = Number(process.env.JOB_TERM_LIMIT || 6);
+  const termLimit = getJobTermLimit();
   const terms = [];
   if (profile.desiredRole) terms.push(profile.desiredRole);
   if (profile.skills?.length) terms.push(...profile.skills.slice(0, 3));
-  terms.push(
-    'software engineer',
-    'frontend developer',
-    'backend developer',
-    'python developer',
-    'react developer',
-    'AI/ML intern',
-    'data analyst',
-    'cloud engineer',
-    'internship',
-    'fresher',
-    'entry level',
-  );
+  terms.push(...appConfig.defaultSearchTerms);
   return Array.from(new Set(terms.map((term) => normalize(term)).filter(Boolean))).slice(0, termLimit);
 };
 
-const buildLocation = (profile) => {
-  if (/remote/.test(normalize(profile.workPreference))) return 'Remote';
-  if (profile.location) return profile.location;
-  return 'India';
+const sourceSettings = new Map(sourceConfig.sources.map((source) => [source.platform, source]));
+
+const renderSearchUrl = (template, term, profile = {}) => {
+  const location = normalize(profile.location || appConfig.defaultLocation);
+  const replacements = {
+    term: encodeURIComponent(term),
+    termSlug: encodeURIComponent(normalize(term).replace(/\s+/g, '-')),
+    location: encodeURIComponent(location),
+  };
+  return template.replace(/\{\{(term|termSlug|location)\}\}/g, (_, key) => replacements[key]);
 };
 
-const buildRemoteOKUrl = (term) => {
-  const query = normalize(term).replace(/\s+/g, '-');
-  return `https://remoteok.com/remote-${encodeURIComponent(query)}-jobs`;
-};
-
-const buildWeWorkRemoteUrl = (term) => {
-  return `https://weworkremotely.com/remote-jobs/search?term=${encodeURIComponent(term)}`;
-};
-
-const buildInternshalaUrl = (term) => {
-  return `https://internshala.com/internships/${encodeURIComponent(term.replace(/\s+/g, '-'))}?location=India`;
-};
-
-const buildWellfoundUrl = (term) => {
-  return `https://wellfound.com/jobs?query=${encodeURIComponent(term)}&remote=true&locations=India`;
-};
-
-const buildFounditUrl = (term) => {
-  return `https://www.foundit.in/jobs?searchTerm=${encodeURIComponent(term)}&location=India`;
-};
-
-const buildNaukriUrl = (term) => {
-  const query = normalize(term).replace(/\s+/g, '-');
-  return `https://www.naukri.com/${encodeURIComponent(query)}-jobs-in-india`;
-};
-
-const buildLinkedInUrl = (term) => {
-  return `https://www.linkedin.com/jobs-guest/jobs/api/seeMoreJobPostings/search?keywords=${encodeURIComponent(term)}&location=${encodeURIComponent('India')}&start=0`;
-};
-
-const buildIndeedUrl = (term) => {
-  return `https://in.indeed.com/jobs?q=${encodeURIComponent(term)}&l=${encodeURIComponent('India')}`;
-};
-
-const buildGlassdoorUrl = (term) => {
-  return `https://www.glassdoor.co.in/Job/india-${encodeURIComponent(term.replace(/\s+/g, '-'))}-jobs-SRCH_IL.0,5_IN115_KO6.htm`;
+const buildSourceUrls = (platform, terms, profile) => {
+  const settings = sourceSettings.get(platform);
+  return (settings?.searchUrls || [])
+    .flatMap((template) => terms.map((term) => renderSearchUrl(template, term, profile)))
+    .filter(Boolean);
 };
 
 const sourceDefinitions = [
   {
     name: 'RemoteOK',
     platform: 'RemoteOK',
-    type: 'playwright',
-    buildUrls: (terms) => terms.map(buildRemoteOKUrl),
+    type: sourceSettings.get('RemoteOK')?.type || 'playwright',
+    buildUrls: (terms, profile) => buildSourceUrls('RemoteOK', terms, profile),
     extract: async (page, request) => {
       await page.waitForSelector('table#jobsboard tr.job', { state: 'attached', timeout: 30000 });
       await page.waitForTimeout(2000);
@@ -148,8 +113,8 @@ const sourceDefinitions = [
   {
     name: 'WeWorkRemotely',
     platform: 'WeWorkRemotely',
-    type: 'cheerio',
-    buildUrls: (terms) => terms.map(buildWeWorkRemoteUrl),
+    type: sourceSettings.get('WeWorkRemotely')?.type || 'cheerio',
+    buildUrls: (terms, profile) => buildSourceUrls('WeWorkRemotely', terms, profile),
     extract: ($, request) => {
       const rows = $('section.jobs article ul li').toArray();
       const jobs = rows
@@ -202,8 +167,8 @@ const sourceDefinitions = [
   {
     name: 'Internshala',
     platform: 'Internshala',
-    type: 'playwright',
-    buildUrls: (terms) => terms.map(buildInternshalaUrl),
+    type: sourceSettings.get('Internshala')?.type || 'playwright',
+    buildUrls: (terms, profile) => buildSourceUrls('Internshala', terms, profile),
     extract: async (page, request) => {
       await page.waitForSelector('.individual_internship.view_detail_button', { timeout: 30000 });
       await page.waitForTimeout(1200);
@@ -239,8 +204,8 @@ const sourceDefinitions = [
   {
     name: 'LinkedIn',
     platform: 'LinkedIn',
-    type: 'cheerio',
-    buildUrls: (terms) => terms.map(buildLinkedInUrl),
+    type: sourceSettings.get('LinkedIn')?.type || 'cheerio',
+    buildUrls: (terms, profile) => buildSourceUrls('LinkedIn', terms, profile),
     extract: ($, request) => {
       const rows = $('li, .job-search-card').toArray();
       const jobs = rows
@@ -282,8 +247,8 @@ const sourceDefinitions = [
   {
     name: 'Wellfound',
     platform: 'Wellfound',
-    type: 'playwright',
-    buildUrls: (terms) => terms.map(buildWellfoundUrl),
+    type: sourceSettings.get('Wellfound')?.type || 'playwright',
+    buildUrls: (terms, profile) => buildSourceUrls('Wellfound', terms, profile),
     extract: async (page) => {
       await page.waitForSelector('a[data-test-job-tile], li[data-testid="job-card"], li.job-card', { timeout: 30000 });
       await page.waitForTimeout(1600);
@@ -320,8 +285,8 @@ const sourceDefinitions = [
   {
     name: 'Foundit',
     platform: 'Foundit',
-    type: 'playwright',
-    buildUrls: (terms) => terms.map(buildFounditUrl),
+    type: sourceSettings.get('Foundit')?.type || 'playwright',
+    buildUrls: (terms, profile) => buildSourceUrls('Foundit', terms, profile),
     extract: async (page) => {
       await page.waitForSelector('article.job-card, .job-tile, .job-card', { timeout: 30000 });
       await page.waitForTimeout(1200);
@@ -357,8 +322,8 @@ const sourceDefinitions = [
   {
     name: 'Naukri',
     platform: 'Naukri',
-    type: 'playwright',
-    buildUrls: (terms) => terms.map(buildNaukriUrl),
+    type: sourceSettings.get('Naukri')?.type || 'playwright',
+    buildUrls: (terms, profile) => buildSourceUrls('Naukri', terms, profile),
     extract: async (page) => {
       await page.waitForSelector('.srp-jobtuple-wrapper, div.jobTuple, .jobTuple, article.jobTuple', { timeout: 30000 });
       await page.waitForTimeout(1400);
@@ -396,8 +361,8 @@ const sourceDefinitions = [
   {
     name: 'Indeed',
     platform: 'Indeed',
-    type: 'playwright',
-    buildUrls: (terms) => terms.map(buildIndeedUrl),
+    type: sourceSettings.get('Indeed')?.type || 'playwright',
+    buildUrls: (terms, profile) => buildSourceUrls('Indeed', terms, profile),
     extract: async (page) => {
       await page.waitForSelector('div.job_seen_beacon, a[data-jk], .jobsearch-SerpJobCard', { timeout: 30000 });
       await page.waitForTimeout(1400);
@@ -434,8 +399,8 @@ const sourceDefinitions = [
   {
     name: 'Glassdoor',
     platform: 'Glassdoor',
-    type: 'playwright',
-    buildUrls: (terms) => terms.map(buildGlassdoorUrl),
+    type: sourceSettings.get('Glassdoor')?.type || 'playwright',
+    buildUrls: (terms, profile) => buildSourceUrls('Glassdoor', terms, profile),
     extract: async (page) => {
       await page.waitForSelector('[data-test="jobListing"], li[data-test="jobListing"], .JobsList_jobListItem__wjTHv', { timeout: 30000 });
       await page.waitForTimeout(1400);
@@ -471,21 +436,20 @@ const sourceDefinitions = [
   },
 ];
 
-const configuredSources = (process.env.JOB_SOURCES || 'LinkedIn,Internshala,Indeed,Glassdoor,WeWorkRemotely')
-  .split(',')
-  .map((source) => cleanText(source))
-  .filter(Boolean);
+const configuredSources = getJobSources().map((source) => cleanText(source)).filter(Boolean);
 const activeSourcePlatforms = new Set(configuredSources);
 
 const createRequestList = async (urls) => {
   return RequestList.open(`job-sources-${Date.now()}`, urls.map((url) => ({ url })));
 };
 
-const scrapeSource = async (profile, source) => {
+const scrapeSource = async (profile, source, options = {}) => {
   const terms = buildSearchTerms(profile);
-  const urls = source.buildUrls(terms);
+  const urls = source.buildUrls(terms, profile);
   const requestList = await createRequestList(urls);
   const results = [];
+  let cardsSeen = 0;
+  let lastError = '';
 
   const crawlerOptions = {
     requestList,
@@ -499,6 +463,7 @@ const scrapeSource = async (profile, source) => {
         const rawResult = await source.extract(page || $, request);
         const extracted = Array.isArray(rawResult) ? rawResult : rawResult.jobs || [];
         const cardCount = rawResult && typeof rawResult === 'object' && typeof rawResult.cards === 'number' ? rawResult.cards : extracted.length;
+        cardsSeen += cardCount;
         const normalized = extracted
           .filter((job) => job.title && job.apply_url && isValidUrl(job.apply_url))
           .map((job) => ({
@@ -512,10 +477,12 @@ const scrapeSource = async (profile, source) => {
         }
         results.push(...normalized);
       } catch (error) {
+        lastError = error.message;
         log.warning(`[SCRAPER] Extraction failed for ${source.platform}: ${error.message}`);
       }
     },
     failedRequestHandler: async ({ request, error }) => {
+      lastError = error.message;
       log.warning(`[SCRAPER] Failed to load ${source.platform}: ${request.url} — ${error.message}`);
     },
   };
@@ -552,17 +519,31 @@ const scrapeSource = async (profile, source) => {
       });
 
   await crawler.run();
+  await recordScraperSourceResult({
+    runId: options.runId,
+    source: source.platform,
+    status: results.length ? 'completed' : lastError ? 'failed' : 'empty',
+    cardsSeen,
+    jobsExtracted: results.length,
+    errorMessage: lastError,
+  });
   log.info(`[SCRAPER] Scraped ${results.length} jobs from ${source.platform}`);
   return results;
 };
 
-const crawlJobSources = async (profile) => {
+const crawlJobSources = async (profile, options = {}) => {
   const jobs = [];
   for (const source of sourceDefinitions.filter((source) => activeSourcePlatforms.has(source.platform))) {
     try {
-      const sourceJobs = await scrapeSource(profile, source);
+      const sourceJobs = await scrapeSource(profile, source, options);
       jobs.push(...sourceJobs);
     } catch (error) {
+      await recordScraperSourceResult({
+        runId: options.runId,
+        source: source.platform,
+        status: 'failed',
+        errorMessage: error.message,
+      });
       log.warning(`[SCRAPER] Skipping ${source.platform} due to error: ${error.message}`);
     }
   }

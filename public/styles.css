@@ -108,6 +108,11 @@ button:hover {
   background: #4338ca;
 }
 
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+}
+
 .results-heading {
   margin-bottom: 16px;
 }
@@ -226,6 +231,18 @@ button:hover {
   background: rgba(255, 255, 255, 0.04);
 }
 
+.match-breakdown div.score-strong {
+  border-color: rgba(22, 163, 74, 0.28);
+}
+
+.match-breakdown div.score-mixed {
+  border-color: rgba(234, 179, 8, 0.26);
+}
+
+.match-breakdown div.score-weak {
+  border-color: rgba(248, 113, 113, 0.28);
+}
+
 .match-breakdown span {
   color: var(--muted);
   font-size: 0.76rem;
@@ -234,6 +251,24 @@ button:hover {
 .match-breakdown strong {
   color: var(--text);
   font-size: 0.95rem;
+}
+
+.match-breakdown small {
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.trust-notes {
+  display: grid;
+  gap: 6px;
+  margin: 12px 0;
+  padding: 10px 12px;
+  border-left: 3px solid rgba(234, 179, 8, 0.68);
+  border-radius: 6px;
+  background: rgba(234, 179, 8, 0.08);
+  color: #fde68a;
+  font-size: 0.86rem;
+  line-height: 1.45;
 }
 
 .recommendation-why ul {
@@ -256,6 +291,39 @@ button:hover {
   display: inline-flex;
   margin-top: 14px;
   font-weight: 700;
+}
+
+.job-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 14px;
+  margin-top: 14px;
+}
+
+.job-actions .apply-link {
+  margin-top: 0;
+}
+
+.feedback-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.feedback-actions button {
+  width: auto;
+  min-height: 34px;
+  padding: 8px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  font-size: 0.78rem;
+}
+
+.feedback-actions button:hover {
+  background: rgba(79, 70, 229, 0.18);
 }
 
 .skeleton-card {
