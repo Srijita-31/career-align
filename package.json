@@ -8,6 +8,7 @@
     "dev": "nodemon server.js",
     "scrape": "node utils/scraperService.js",
     "reembed": "node utils/reembedJobs.js",
+    "test:recommendations": "node tests/recommendationSmoke.js",
     "worker:refresh": "node workers/jobRefreshWorker.js",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down"

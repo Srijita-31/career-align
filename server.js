@@ -5,7 +5,7 @@ const fs = require('fs/promises');
 const express = require('express');
 const multer = require('multer');
 const { parseResume } = require('./utils/resumeParser');
-const { countStaleJobEmbeddings, ensureSchema, getRecentScraperRuns, saveRecommendationFeedback } = require('./utils/db');
+const { countStaleJobEmbeddings, ensureSchema, getJobStats, getRecentScraperRuns, saveRecommendationFeedback } = require('./utils/db');
 const { matchJobs } = require('./utils/jobAggregator');
 const { getJobRefreshStatus, queueJobRefresh } = require('./utils/jobRefreshQueue');
 const { startScrapeScheduler } = require('./scheduler/scrapeScheduler');
@@ -22,7 +22,7 @@ app.post('/api/match', upload.single('resume'), async (req, res) => {
   let resumePath;
   try {
     resumePath = req.file?.path;
-    const profile = await parseResume(req.body, resumePath);
+    const profile = await parseResume(req.body, req.file);
     const jobs = await matchJobs(profile);
 
     return res.json({
@@ -67,6 +67,16 @@ app.get('/api/admin/scraper-runs', async (req, res) => {
     res.json({ status: 'ok', runs });
   } catch (error) {
     res.status(500).json({ status: 'error', message: error.message || 'Unable to load scraper runs.' });
+  }
+});
+
+// Issue 2: Admin endpoint to check job inventory by location
+app.get('/api/admin/job-stats', async (req, res) => {
+  try {
+    const stats = await getJobStats();
+    res.json({ status: 'ok', stats });
+  } catch (error) {
+    res.status(500).json({ status: 'error', message: error.message || 'Unable to load job statistics.' });
   }
 });
 

@@ -3,7 +3,7 @@
     {
       "name": "RemoteOK",
       "platform": "RemoteOK",
-      "enabled": false,
+      "enabled": true,
       "type": "playwright",
       "searchUrls": [
         "https://remoteok.com/remote-{{termSlug}}-jobs"
@@ -39,7 +39,7 @@
     {
       "name": "Wellfound",
       "platform": "Wellfound",
-      "enabled": false,
+      "enabled": true,
       "type": "playwright",
       "searchUrls": [
         "https://wellfound.com/jobs?query={{term}}&remote=true&locations={{location}}"
@@ -48,7 +48,7 @@
     {
       "name": "Foundit",
       "platform": "Foundit",
-      "enabled": false,
+      "enabled": true,
       "type": "playwright",
       "searchUrls": [
         "https://www.foundit.in/jobs?searchTerm={{term}}&location={{location}}"
@@ -57,7 +57,7 @@
     {
       "name": "Naukri",
       "platform": "Naukri",
-      "enabled": false,
+      "enabled": true,
       "type": "playwright",
       "searchUrls": [
         "https://www.naukri.com/{{termSlug}}-jobs-in-india"

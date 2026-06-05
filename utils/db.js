@@ -20,6 +20,16 @@ const toVector = (embedding) => `[${embedding.join(',')}]`;
 
 const normalizeJob = (job) => {
   const applyUrl = job.apply_url || job.url || '';
+  let urlKey = applyUrl;
+  try {
+    const u = new URL(applyUrl);
+    const tracking = ['utm_source', 'utm_medium', 'utm_campaign', 'ref', 'source'];
+    tracking.forEach(p => u.searchParams.delete(p));
+    urlKey = u.toString();
+  } catch(e) {}
+  const fallbackKey = `${String(job.title).trim().toLowerCase()}|${String(job.company).trim().toLowerCase()}|${String(job.location).trim().toLowerCase()}`;
+  const finalKey = urlKey || fallbackKey;
+  
   const baseJob = {
     source: job.source || job.source_platform || 'unknown',
     source_platform: job.source_platform || job.source || 'unknown',
@@ -37,7 +47,7 @@ const normalizeJob = (job) => {
   const enriched = enrichJob({ ...baseJob, ...job });
 
   return {
-    url_hash: hashUrl(applyUrl),
+    url_hash: hashUrl(finalKey),
     ...baseJob,
     role_family: enriched.role_family,
     seniority: enriched.seniority,
@@ -497,9 +507,80 @@ const getRecentScraperRuns = async (limit = 10) => {
   }));
 };
 
+const getJobStats = async () => {
+  await ensureSchema();
+  const result = await pool.query(`
+    SELECT
+      COUNT(*)::int AS total_jobs,
+      SUM(CASE WHEN location ILIKE '%india%' OR location ~* '\\m(bangalore|bengaluru|mumbai|delhi|pune|hyderabad|chennai|kolkata|gurugram|gurgaon|noida)\\m' THEN 1 ELSE 0 END)::int AS india_jobs,
+      SUM(CASE WHEN NOT (location ILIKE '%india%' OR location ~* '\\m(bangalore|bengaluru|mumbai|delhi|pune|hyderabad|chennai|kolkata|gurugram|gurgaon|noida)\\m') AND location != '' THEN 1 ELSE 0 END)::int AS outside_india_jobs,
+      SUM(CASE WHEN remote_type = 'Remote' THEN 1 ELSE 0 END)::int AS remote_jobs,
+      SUM(CASE WHEN remote_type = 'Hybrid' THEN 1 ELSE 0 END)::int AS hybrid_jobs,
+      SUM(CASE WHEN remote_type = 'Onsite' THEN 1 ELSE 0 END)::int AS onsite_jobs,
+      SUM(CASE WHEN LENGTH(description) > 500 THEN 1 ELSE 0 END)::int AS full_description_jobs,
+      SUM(CASE WHEN LENGTH(description) >= 150 AND LENGTH(description) <= 500 THEN 1 ELSE 0 END)::int AS partial_description_jobs,
+      SUM(CASE WHEN LENGTH(description) < 150 THEN 1 ELSE 0 END)::int AS preview_description_jobs,
+      ROUND(AVG(LENGTH(description)))::int AS avg_description_length,
+      SUM(CASE WHEN jsonb_array_length(required_skills) = 0 THEN 1 ELSE 0 END)::int AS jobs_with_no_skills,
+      ROUND(AVG(jsonb_array_length(required_skills)), 1) AS avg_skills_per_job
+    FROM jobs
+  `);
+
+  const stats = result.rows[0] || {};
+
+  const sourceResult = await pool.query(`
+    SELECT source_platform, COUNT(*)::int AS count
+    FROM jobs
+    WHERE source_platform IS NOT NULL AND source_platform != ''
+    GROUP BY source_platform
+    ORDER BY count DESC
+  `);
+
+  const roleFamilyResult = await pool.query(`
+    SELECT role_family, COUNT(*)::int AS count
+    FROM jobs
+    WHERE role_family IS NOT NULL AND role_family != ''
+    GROUP BY role_family
+    ORDER BY count DESC
+    LIMIT 10
+  `);
+
+  const bySource = {};
+  sourceResult.rows.forEach((row) => { bySource[row.source_platform] = row.count; });
+
+  const byRoleFamily = {};
+  roleFamilyResult.rows.forEach((row) => { byRoleFamily[row.role_family] = row.count; });
+
+  return {
+    total_jobs: stats.total_jobs || 0,
+    location_distribution: {
+      india_jobs: stats.india_jobs || 0,
+      outside_india_jobs: stats.outside_india_jobs || 0,
+    },
+    work_mode_distribution: {
+      remote_jobs: stats.remote_jobs || 0,
+      hybrid_jobs: stats.hybrid_jobs || 0,
+      onsite_jobs: stats.onsite_jobs || 0,
+    },
+    description_quality: {
+      full: stats.full_description_jobs || 0,
+      partial: stats.partial_description_jobs || 0,
+      preview: stats.preview_description_jobs || 0,
+      avg_length: stats.avg_description_length || 0,
+    },
+    skill_extraction: {
+      jobs_with_no_skills: stats.jobs_with_no_skills || 0,
+      avg_skills_per_job: parseFloat(stats.avg_skills_per_job) || 0,
+    },
+    jobs_by_source: bySource,
+    jobs_by_role_family: byRoleFamily,
+  };
+};
+
 module.exports = {
   ensureSchema,
   getJobCount,
+  getJobStats,
   storeJobs,
   searchSimilarJobs,
   getAllJobs,

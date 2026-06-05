@@ -1,5 +1,6 @@
 const { CheerioCrawler, RequestList, log } = require('@crawlee/cheerio');
 const { PlaywrightCrawler } = require('@crawlee/playwright');
+const cheerio = require('cheerio');
 const { appConfig, getJobSources, getJobTermLimit, sourceConfig } = require('../config');
 const { recordScraperSourceResult } = require('./db');
 
@@ -20,10 +21,19 @@ const sanitizeRelativeUrl = (value, baseUrl) => {
     return '';
   }
 };
+
+const inferWorkMode = ({ title = '', location = '', description = '', fallback = 'Onsite' } = {}) => {
+  const text = `${title} ${location} ${description}`;
+  if (/remote|work from home|wfh/i.test(text)) return 'Remote';
+  if (/hybrid/i.test(text)) return 'Hybrid';
+  if (/onsite|on site|office|in-office/i.test(text)) return 'Onsite';
+  return fallback;
+};
+
 const buildDescription = (title, company, location, extra) => {
   const parts = [title, company, location, extra].filter(Boolean);
-  const text = cleanText(parts.join(' • '));
-  return text.length >= 60 ? text : `${text} • Live scraped job data from source`; 
+  const text = cleanText(parts.join(' - '));
+  return text.length >= 60 ? text : `${text} - Live scraped job data from source`; 
 };
 
 const buildSearchTerms = (profile) => {
@@ -100,7 +110,7 @@ const sourceDefinitions = [
               job_type: jobType,
               work_mode: 'Remote',
               apply_url: link,
-              description: description || `${title} at ${company} • ${location}`,
+              description: description || `${title} at ${company} - ${location}`,
               skills: tags,
               source_platform: 'RemoteOK',
               posted_date,
@@ -140,7 +150,7 @@ const sourceDefinitions = [
             .toArray()
             .map((tag) => cleanText($(tag).text()));
           const jobType = /intern|internship|trainee|fresher/i.test(title + description) ? 'Internship' : 'Full-time';
-          const workMode = /remote|work from home|wfh/i.test(description) ? 'Remote' : 'Hybrid';
+          const workMode = inferWorkMode({ title, location, description, fallback: 'Remote' });
 
           if (!title || !apply_url || /\/listing_ads\//i.test(apply_url) || /view company profile/i.test(title)) {
             return null;
@@ -189,7 +199,7 @@ const sourceDefinitions = [
             location,
             salary: node.querySelector('.stipend')?.innerText?.trim() || '',
             job_type: jobType,
-            work_mode: /(remote|work from home|wfh)/i.test(description) ? 'Remote' : 'Hybrid',
+            work_mode: inferWorkMode({ title, location, description }),
             apply_url,
             description,
             skills: tags,
@@ -232,7 +242,7 @@ const sourceDefinitions = [
             location,
             salary: '',
             job_type: jobType,
-            work_mode: /(remote|work from home|wfh)/i.test(`${title} ${location}`) ? 'Remote' : 'Hybrid',
+            work_mode: inferWorkMode({ title, location, description }),
             apply_url,
             description,
             skills: [],
@@ -262,7 +272,7 @@ const sourceDefinitions = [
           const tags = Array.from(node.querySelectorAll('.tag, .skill-pill')).map((tag) => tag.innerText.trim());
           const postedDate = node.querySelector('time')?.innerText?.trim() || '';
           const jobType = /intern|internship|trainee|fresher/.test(title + description) ? 'Internship' : 'Full-time';
-          const workMode = /(remote|work from home|wfh)/i.test(description) ? 'Remote' : 'Hybrid';
+          const workMode = inferWorkMode({ title, location, description });
 
           return {
             title,
@@ -299,7 +309,7 @@ const sourceDefinitions = [
           const description = node.querySelector('.job-summary, .job-description')?.innerText?.trim() || '';
           const tags = Array.from(node.querySelectorAll('ul.skill-tags li, .skills li')).map((tag) => tag.innerText.trim());
           const jobType = /intern|internship|trainee|fresher/.test(title + description) ? 'Internship' : 'Full-time';
-          const workMode = /(remote|work from home|wfh)/i.test(description) ? 'Remote' : 'Hybrid';
+          const workMode = inferWorkMode({ title, location, description });
 
           return {
             title,
@@ -338,7 +348,7 @@ const sourceDefinitions = [
           const tags = Array.from(node.querySelectorAll('ul.tags-gt li, ul.tags li, .tags li')).map((tag) => tag.innerText.trim());
           const salary = node.querySelector('.sal-wrap, .salary, li.salary')?.innerText?.trim() || '';
           const jobType = /intern|internship|trainee|fresher/.test(title + description) ? 'Internship' : 'Full-time';
-          const workMode = /(remote|work from home|wfh)/i.test(description) ? 'Remote' : 'Hybrid';
+          const workMode = inferWorkMode({ title, location, description });
 
           return {
             title,
@@ -384,7 +394,7 @@ const sourceDefinitions = [
             location,
             salary,
             job_type: jobType,
-            work_mode: /(remote|work from home|wfh)/i.test(`${title} ${location} ${description}`) ? 'Remote' : 'Hybrid',
+            work_mode: inferWorkMode({ title, location, description }),
             apply_url,
             description,
             skills: [],
@@ -422,7 +432,7 @@ const sourceDefinitions = [
             location,
             salary,
             job_type: jobType,
-            work_mode: /(remote|work from home|wfh)/i.test(`${title} ${location}`) ? 'Remote' : 'Hybrid',
+            work_mode: inferWorkMode({ title, location, description }),
             apply_url,
             description,
             skills: [],
@@ -439,13 +449,100 @@ const sourceDefinitions = [
 const configuredSources = getJobSources().map((source) => cleanText(source)).filter(Boolean);
 const activeSourcePlatforms = new Set(configuredSources);
 
+const fetchFullDescription = async (job) => {
+  if (job.description && job.description.length > 500) {
+    return job;
+  }
+  if (!isValidUrl(job.apply_url)) return job;
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 6000);
+    const res = await fetch(job.apply_url, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (!res.ok) return job;
+    const html = await res.text();
+    const $ = cheerio.load(html);
+    
+    let fullText = '';
+    switch (job.source_platform) {
+      case 'Internshala':
+        fullText = $('.internship_details, .detail_view, .text-container').text();
+        break;
+      case 'LinkedIn':
+        fullText = $('.show-more-less-html__markup, .description__text, div.core-section-container__content').text();
+        break;
+      case 'WeWorkRemotely':
+        fullText = $('.listing-container, #job-listing-show-container').text();
+        break;
+      case 'Wellfound':
+        fullText = $('.styles_description__2Xz19, .job-description, div[data-test="JobProfileAbout"]').text();
+        break;
+      case 'Naukri':
+        fullText = $('.job-desc, .danger-html, section.job-desc').text();
+        break;
+      case 'Indeed':
+        fullText = $('#jobDescriptionText').text();
+        break;
+      case 'Glassdoor':
+        fullText = $('#JobDescriptionContainer, .desc').text();
+        break;
+      case 'Foundit':
+        fullText = $('.job-description, #jobDescription').text();
+        break;
+      default:
+        $('script, style, nav, header, footer').remove();
+        fullText = $('body').text();
+    }
+    
+    const cleaned = cleanText(fullText);
+    if (cleaned && cleaned.length > job.description.length) {
+      return { ...job, description: cleaned };
+    }
+  } catch (e) {
+    // ignore
+  }
+  return job;
+};
+
+const enrichDescriptions = async (jobs) => {
+  const result = [];
+  for (let i = 0; i < jobs.length; i += 3) {
+    const batch = jobs.slice(i, i + 3);
+    const enrichedBatch = await Promise.all(batch.map(fetchFullDescription));
+    result.push(...enrichedBatch);
+  }
+  return result;
+};
+
 const createRequestList = async (urls) => {
   return RequestList.open(`job-sources-${Date.now()}`, urls.map((url) => ({ url })));
 };
 
+const sourceUrlLimit = (source) => {
+  const envLimit = Number(process.env.JOB_SOURCE_URL_LIMIT);
+  if (Number.isFinite(envLimit) && envLimit > 0) return envLimit;
+  return source.type === 'playwright' ? 2 : getJobTermLimit();
+};
+
 const scrapeSource = async (profile, source, options = {}) => {
   const terms = buildSearchTerms(profile);
-  const urls = source.buildUrls(terms, profile);
+  const urls = source.buildUrls(terms, profile).slice(0, sourceUrlLimit(source));
+  if (!urls.length) {
+    await recordScraperSourceResult({
+      runId: options.runId,
+      source: source.platform,
+      status: 'empty',
+      errorMessage: 'No search URLs configured for source.',
+    });
+    return [];
+  }
   const requestList = await createRequestList(urls);
   const results = [];
   let cardsSeen = 0;
@@ -483,7 +580,7 @@ const scrapeSource = async (profile, source, options = {}) => {
     },
     failedRequestHandler: async ({ request, error }) => {
       lastError = error.message;
-      log.warning(`[SCRAPER] Failed to load ${source.platform}: ${request.url} — ${error.message}`);
+      log.warning(`[SCRAPER] Failed to load ${source.platform}: ${request.url} - ${error.message}`);
     },
   };
 
@@ -531,11 +628,28 @@ const scrapeSource = async (profile, source, options = {}) => {
   return results;
 };
 
+const runWithTimeout = (promise, ms, label) => {
+  let timeout;
+  const timer = new Promise((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`${label} timed out after ${ms}ms`)), ms);
+  });
+  return Promise.race([promise, timer]).finally(() => clearTimeout(timeout));
+};
+
 const crawlJobSources = async (profile, options = {}) => {
   const jobs = [];
-  for (const source of sourceDefinitions.filter((source) => activeSourcePlatforms.has(source.platform))) {
+  const activeSources = sourceDefinitions
+    .filter((source) => activeSourcePlatforms.has(source.platform))
+    .sort((a, b) => (a.type === 'cheerio' ? 0 : 1) - (b.type === 'cheerio' ? 0 : 1));
+
+  for (const source of activeSources) {
     try {
-      const sourceJobs = await scrapeSource(profile, source, options);
+      const sourceTimeoutMs = Number(process.env.JOB_SOURCE_TIMEOUT_MS || 90000);
+      const sourceJobs = await runWithTimeout(
+        scrapeSource(profile, source, options),
+        sourceTimeoutMs,
+        source.platform
+      );
       jobs.push(...sourceJobs);
     } catch (error) {
       await recordScraperSourceResult({
@@ -550,14 +664,26 @@ const crawlJobSources = async (profile, options = {}) => {
 
   const unique = new Map();
   jobs.forEach((job) => {
-    const key = `${cleanText(job.title)}|${cleanText(job.company)}|${cleanText(job.location)}|${cleanText(job.apply_url)}`;
+    // Fallback key: title + company + location
+    const fallbackKey = `${cleanText(job.title)}|${cleanText(job.company)}|${cleanText(job.location)}`;
+    // Primary key: apply_url without query params
+    let urlKey = job.apply_url;
+    try {
+      const u = new URL(job.apply_url);
+      u.search = '';
+      urlKey = u.toString();
+    } catch (e) {}
+    
+    const key = urlKey || fallbackKey;
     if (!unique.has(key)) {
       unique.set(key, job);
     }
   });
 
-  return Array.from(unique.values());
+  const uniqueJobs = Array.from(unique.values());
+  log.info(`[SCRAPER] Fetching full descriptions for ${uniqueJobs.length} jobs...`);
+  const finalJobs = await enrichDescriptions(uniqueJobs);
+  return finalJobs;
 };
 
 module.exports = { crawlJobSources };
-

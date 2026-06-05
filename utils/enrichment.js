@@ -70,9 +70,45 @@ const extractSkillTerms = (values) => {
   return unique(skills);
 };
 
-const inferRoleFamily = (text) => {
+const ROLE_FAMILY_KEYWORDS = new Map([
+  ['AI and Machine Learning', ['machine learning', 'deep learning', 'natural language processing', 'nlp', 'llm', 'large language model', 'computer vision', 'image processing', 'tensorflow', 'pytorch', 'scikit learn', 'opencv', 'data scientist', 'data science', 'ai engineer', 'ml engineer']],
+  ['Backend Engineering', ['backend', 'back end', 'api', 'server side', 'java', 'spring boot', 'node.js', 'express', 'django', 'flask', 'fastapi', 'microservice', 'rest api', 'graphql']],
+  ['Frontend Engineering', ['frontend', 'front end', 'react', 'reactjs', 'javascript', 'html', 'css', 'typescript', 'redux', 'vue', 'vuejs', 'angular', 'ui developer', 'web developer', 'ui engineer']],
+  ['Full Stack Engineering', ['full stack', 'fullstack', 'mern', 'mean stack', 'full-stack']],
+  ['Data and Analytics', ['data analyst', 'analytics', 'business analyst', 'tableau', 'power bi', 'excel', 'business intelligence', 'bi developer', 'reporting']],
+  ['Data Engineering', ['data engineer', 'etl', 'airflow', 'spark', 'kafka', 'big data', 'data pipeline', 'databricks', 'hadoop', 'data warehouse']],
+  ['Cloud and DevOps', ['devops', 'cloud engineer', 'aws', 'azure', 'gcp', 'docker', 'kubernetes', 'sre', 'site reliability', 'terraform', 'jenkins', 'ci cd', 'infrastructure', 'platform engineer']],
+  ['Cybersecurity', ['cybersecurity', 'security analyst', 'security engineer', 'soc', 'siem', 'incident response', 'network security', 'penetration testing', 'vulnerability', 'infosec']],
+  ['Mobile Engineering', ['mobile', 'android', 'ios', 'flutter', 'react native', 'swift', 'kotlin']],
+  ['Product and Design', ['product manager', 'ui ux', 'ux designer', 'product designer', 'figma', 'user research']],
+]);
+
+const inferRoleFamily = (text, skills = []) => {
   const normalized = normalizeKeyPart(text);
-  return ROLE_FAMILIES.find((role) => role.pattern.test(normalized))?.name || 'General Technology';
+  const skillKeys = new Set((Array.isArray(skills) ? skills : []).map(normalizeKeyPart));
+
+  const scores = [];
+  for (const [familyName, keywords] of ROLE_FAMILY_KEYWORDS) {
+    let score = 0;
+    for (const keyword of keywords) {
+      const kNorm = normalizeKeyPart(keyword);
+      if (skillKeys.has(kNorm)) {
+        score += 5; // strong signal: skill explicitly extracted
+      } else if (normalized.includes(kNorm)) {
+        score += 2; // text mention
+      }
+    }
+    // Also check ROLE_FAMILIES regex patterns for an additional boost
+    const rolePattern = ROLE_FAMILIES.find((r) => r.name === familyName);
+    if (rolePattern && rolePattern.pattern.test(normalized)) {
+      score += 3;
+    }
+    if (score > 0) scores.push({ name: familyName, score });
+  }
+
+  if (!scores.length) return 'General Technology';
+  scores.sort((a, b) => b.score - a.score);
+  return scores[0].score >= 2 ? scores[0].name : 'General Technology';
 };
 
 const inferSeniority = (text, fallback = 'Entry Level') => {
@@ -135,7 +171,7 @@ const enrichJob = (job) => {
   const skillBuckets = splitRequiredAndNiceSkills(text, skills);
 
   return {
-    role_family: job.role_family || inferRoleFamily(text),
+    role_family: job.role_family || inferRoleFamily(text, skills),
     seniority: job.seniority || inferSeniority(text, job.job_type === 'Internship' ? 'Intern' : 'Entry Level'),
     remote_type: job.remote_type || inferRemoteType(job),
     minimum_experience_years: Number.isFinite(Number(job.minimum_experience_years))
@@ -163,7 +199,7 @@ const enrichProfile = (profile) => {
   return {
     ...profile,
     skills: skills.length ? skills.map((skill) => skill.toLowerCase()) : profile.skills || [],
-    roleFamily: inferRoleFamily(text),
+    roleFamily: inferRoleFamily(text, skills),
     seniority: inferSeniority(`${profile.experienceLevel || ''} ${text}`, profile.experienceLevel || 'Student'),
   };
 };

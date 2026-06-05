@@ -16,6 +16,10 @@ const sourceLogos = {
 };
 
 const escapeHtml = (value) => String(value || '')
+  .replace(/\u00e2\u20ac\u201d|\u00e2\u20ac\u201c/g, '-')
+  .replace(/\u00e2\u20ac\u00a2/g, ' - ')
+  .replace(/\u00e2\u20ac\u02dc|\u00e2\u20ac\u2122/g, "'")
+  .replace(/\u00e2\u20ac\u0153|\u00e2\u20ac\ufffd/g, '"')
   .replace(/&/g, '&amp;')
   .replace(/</g, '&lt;')
   .replace(/>/g, '&gt;')
@@ -54,7 +58,7 @@ const renderChips = (chips, emptyText = '') => {
   }
   return values
     .map((value) => `<span class="chip">${escapeHtml(value)}</span>`)
-    .join('');
+    .join(' ');
 };
 
 const scoreTone = (value) => {
@@ -78,6 +82,7 @@ const renderBreakdown = (breakdown = {}) => {
     ['Role fit', breakdown.roleFamily],
     ['Seniority fit', breakdown.seniority],
     ['Location fit', breakdown.location],
+    ['Work mode fit', breakdown.workMode],
   ].filter(([, value]) => Number.isFinite(Number(value)));
 
   if (!rows.length) {
@@ -100,9 +105,20 @@ const renderBreakdown = (breakdown = {}) => {
 const renderTrustNotes = (job) => {
   const notes = [];
   const evidence = job.skillEvidence || {};
+  const diag = job.extractionDiagnostics || {};
 
   if (Number.isFinite(Number(evidence.detectedRequiredCount))) {
     notes.push(`Skills: ${Number(evidence.matchedRequiredCount || 0)} of ${Number(evidence.detectedRequiredCount || 0)} detected requirements matched${evidence.confidence ? ` (${evidence.confidence} confidence)` : ''}.`);
+  }
+
+  if (diag.totalExtractedSkills) {
+    const indicator = diag.skillsTruncated ? '(limited)' : '(full)';
+    notes.push(`Extraction: ${diag.totalExtractedSkills} total skills found ${indicator} - ${diag.configuredSkillsCount} known + ${diag.additionalSkillsCount || diag.additionalCount || 0} pattern-matched.`);
+  }
+
+  if (diag.descriptionUsed > 0) {
+    const quality = diag.descriptionUsed > 300 ? 'full' : diag.descriptionUsed > 100 ? 'partial' : 'minimal';
+    notes.push(`Job text: ${quality} description used (${diag.descriptionUsed} chars).`);
   }
 
   (job.scoreCaps || []).forEach((note) => notes.push(note));
@@ -113,7 +129,7 @@ const renderTrustNotes = (job) => {
 
   return `
     <div class="trust-notes">
-      ${notes.slice(0, 3).map((note) => `<div>${escapeHtml(note)}</div>`).join('')}
+      ${notes.slice(0, 4).map((note) => `<div>${escapeHtml(note)}</div>`).join('')}
     </div>
   `;
 };

@@ -1,15 +1,35 @@
 {
   "weights": {
-    "semantic": 30,
-    "skills": 25,
-    "roleFamily": 20,
-    "seniority": 15,
+    "semantic": 32,
+    "skills": 32,
+    "roleFamily": 10,
+    "seniority": 12,
     "location": 10,
-    "workMode": 0
+    "workMode": 4
   },
   "semanticNormalization": {
     "minimumCosine": 0.15,
     "range": 0.5
+  },
+  "thresholds": {
+    "minScore": 40,
+    "minSemantic": 0.22,
+    "hardMinSemanticWhenLocationMismatch": 0.35,
+    "hardRejectLocationMismatchThreshold": 0.05
+  },
+  "locationPriority": {
+    "outsideIndia": [
+      "remote",
+      "usa",
+      "canada",
+      "uk",
+      "europe",
+      "australia",
+      "singapore",
+      "uae",
+      "asia"
+    ],
+    "fallbackAfterOutsideIndiaRetries": 3
   },
   "resultLimit": 25
 }
