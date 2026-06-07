@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Student Portal – Resume Upload</title>
+  <link rel="stylesheet" href="/styles.css" />
+  <script src="/js/student.js" defer></script>
+</head>
+<body class="bg-gradient">
+  <div class="glass-card centered">
+    <h1 class="title">Upload Resume</h1>
+    <form id="resumeForm" class="form" enctype="multipart/form-data">
+      <input type="file" name="resume" accept=".pdf,.doc,.docx" required class="input" />
+      <button type="submit" class="btn-primary">Upload & Parse</button>
+    </form>
+    <div id="resumeMessage" class="msg"></div>
+  </div>
+</body>
+</html>
