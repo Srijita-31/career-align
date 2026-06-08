@@ -104,7 +104,12 @@ const ensureSchema = async () => {
       name TEXT NOT NULL,
       website TEXT,
       description TEXT,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      logo_url TEXT,
+      industry TEXT,
+      size TEXT,
+      founded_year INT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
   await pool.query(`
@@ -115,7 +120,8 @@ const ensureSchema = async () => {
       source_platform TEXT NOT NULL DEFAULT 'unknown',
       title TEXT NOT NULL,
       company TEXT NOT NULL DEFAULT '',
-      company_id BIGINT REFERENCES companies(id) ON DELETE SET NULL,
+      company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE,
+      recruiter_id BIGINT,
       location TEXT NOT NULL DEFAULT '',
       salary TEXT NOT NULL DEFAULT '',
       job_type TEXT NOT NULL DEFAULT '',
@@ -132,6 +138,7 @@ const ensureSchema = async () => {
       nice_to_have_skills JSONB NOT NULL DEFAULT '[]'::jsonb,
       embedding_text_version INT NOT NULL DEFAULT ${EMBEDDING_TEXT_VERSION},
       embedding vector(${EMBEDDING_DIMENSIONS}) NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT true,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
@@ -153,12 +160,22 @@ const ensureSchema = async () => {
       id BIGSERIAL PRIMARY KEY,
       user_id BIGINT UNIQUE REFERENCES users(id) ON DELETE CASCADE,
       full_name TEXT,
+      phone TEXT,
+      college TEXT,
+      degree TEXT,
+      major TEXT,
+      graduation_year INT,
       resume_text TEXT,
       resume_path TEXT,
       skills JSONB DEFAULT '[]'::jsonb,
       target_roles JSONB DEFAULT '[]'::jsonb,
       extracted_skills JSONB DEFAULT '[]'::jsonb,
-      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+      education JSONB DEFAULT '[]'::jsonb,
+      experience JSONB DEFAULT '[]'::jsonb,
+      projects JSONB DEFAULT '[]'::jsonb,
+      profile_completion_percentage INT NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
   await pool.query(`
@@ -199,6 +216,145 @@ const ensureSchema = async () => {
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // New tables for full application workflow
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS recruiter_profiles (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT UNIQUE NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      company_id BIGINT NOT NULL REFERENCES companies(id) ON DELETE RESTRICT,
+      full_name TEXT,
+      phone TEXT,
+      designation TEXT,
+      is_verified BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS resumes (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      file_name TEXT NOT NULL,
+      file_path TEXT NOT NULL,
+      file_type TEXT NOT NULL,
+      file_size INT NOT NULL,
+      extracted_text TEXT,
+      parsed_data JSONB DEFAULT '{}'::jsonb,
+      is_primary BOOLEAN NOT NULL DEFAULT false,
+      uploaded_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS applications (
+      id BIGSERIAL PRIMARY KEY,
+      student_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      job_id BIGINT NOT NULL REFERENCES jobs(id) ON DELETE CASCADE,
+      resume_id BIGINT REFERENCES resumes(id) ON DELETE SET NULL,
+      match_score DECIMAL(5,2) NOT NULL DEFAULT 0,
+      matched_skills JSONB DEFAULT '[]'::jsonb,
+      missing_skills JSONB DEFAULT '[]'::jsonb,
+      recruiter_notes TEXT,
+      current_status TEXT NOT NULL DEFAULT 'applied' CHECK (current_status IN ('applied', 'under_review', 'shortlisted', 'rejected', 'interview', 'selected', 'withdrawn')),
+      applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(student_id, job_id)
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS application_status_history (
+      id BIGSERIAL PRIMARY KEY,
+      application_id BIGINT NOT NULL REFERENCES applications(id) ON DELETE CASCADE,
+      old_status TEXT,
+      new_status TEXT NOT NULL,
+      changed_by_user_id BIGINT REFERENCES users(id) ON DELETE SET NULL,
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS notifications (
+      id BIGSERIAL PRIMARY KEY,
+      user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      type TEXT NOT NULL,
+      title TEXT NOT NULL,
+      message TEXT NOT NULL,
+      related_entity_type TEXT,
+      related_entity_id BIGINT,
+      is_read BOOLEAN NOT NULL DEFAULT false,
+      action_url TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    )
+  `);
+  // Create indexes for better query performance
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_recruiter_profiles_user_id ON recruiter_profiles(user_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_recruiter_profiles_company_id ON recruiter_profiles(company_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_resumes_user_id ON resumes(user_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_resumes_is_primary ON resumes(is_primary) WHERE is_primary = true`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_applications_student_id ON applications(student_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_applications_job_id ON applications(job_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_applications_status ON applications(current_status)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_application_status_history_app_id ON application_status_history(application_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_user_id ON notifications(user_id)`);
+  await pool.query(`CREATE INDEX IF NOT EXISTS idx_notifications_is_read ON notifications(is_read)`);
+  
+  // Add missing columns to existing tables if they don't exist
+  try {
+    await pool.query(`ALTER TABLE jobs ADD COLUMN company_id BIGINT REFERENCES companies(id) ON DELETE CASCADE`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE jobs ADD COLUMN recruiter_id BIGINT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE jobs ADD COLUMN is_active BOOLEAN NOT NULL DEFAULT true`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE companies ADD COLUMN logo_url TEXT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE companies ADD COLUMN industry TEXT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE companies ADD COLUMN size TEXT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE companies ADD COLUMN founded_year INT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE companies ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN phone TEXT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN college TEXT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN degree TEXT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN major TEXT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN graduation_year INT`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN education JSONB DEFAULT '[]'::jsonb`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN experience JSONB DEFAULT '[]'::jsonb`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN projects JSONB DEFAULT '[]'::jsonb`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN profile_completion_percentage INT NOT NULL DEFAULT 0`);
+  } catch (e) {}
+  try {
+    await pool.query(`ALTER TABLE student_profiles ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
+  } catch (e) {}
+};
 };
 
 const getJobCount = async () => {
@@ -278,14 +434,16 @@ const createJob = async (job, userId) => {
   await ensureSchema();
   const norm = normalizeJob(job);
   const embedding = await createEmbedding(buildJobText(norm));
+  const companyId = job.company_id || null;
+  const recruiterId = job.recruiter_id || null;
   const res = await pool.query(`
     INSERT INTO jobs (
-      url_hash, source, source_platform, title, company, company_id, location, salary,
+      url_hash, source, source_platform, title, company, company_id, recruiter_id, location, salary,
       job_type, work_mode, apply_url, description, skills, posted_date,
       role_family, seniority, remote_type, minimum_experience_years,
       required_skills, nice_to_have_skills, embedding_text_version, embedding
     ) VALUES (
-      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22
+      $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23
     ) RETURNING *
   `, [
     norm.url_hash,
@@ -293,7 +451,8 @@ const createJob = async (job, userId) => {
     norm.source_platform,
     norm.title,
     norm.company,
-    userId,
+    companyId,
+    recruiterId,
     norm.location,
     norm.salary,
     norm.job_type,
@@ -470,7 +629,139 @@ const getStudentProfileByUserId = async (userId) => {
   return r.rows[0] || null;
 };
 
+const updateUserPassword = async (email, passwordHash) => {
+  await ensureSchema();
+  const r = await pool.query(`UPDATE users SET password_hash = $1 WHERE email = $2 RETURNING *`, [passwordHash, email]);
+  return r.rows[0] || null;
+};
+
+// Company Management
+const createCompany = async (name, website, description, industry, size) => {
+  await ensureSchema();
+  const r = await pool.query(`INSERT INTO companies (name, website, description, industry, size) VALUES ($1, $2, $3, $4, $5) RETURNING *`, [name, website, description, industry, size]);
+  return r.rows[0];
+};
+
+const getCompanyById = async (companyId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT * FROM companies WHERE id = $1`, [companyId]);
+  return r.rows[0] || null;
+};
+
+// Recruiter Profile Management
+const createRecruiterProfile = async (userId, companyId, fullName, phone, designation) => {
+  await ensureSchema();
+  const r = await pool.query(`INSERT INTO recruiter_profiles (user_id, company_id, full_name, phone, designation) VALUES ($1, $2, $3, $4, $5) RETURNING *`, [userId, companyId, fullName, phone, designation]);
+  return r.rows[0];
+};
+
+const getRecruiterProfileByUserId = async (userId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT * FROM recruiter_profiles WHERE user_id = $1`, [userId]);
+  return r.rows[0] || null;
+};
+
+// Application Management
+const createApplication = async (studentId, jobId, resumeId, matchScore, matchedSkills, missingSkills) => {
+  await ensureSchema();
+  const r = await pool.query(`INSERT INTO applications (student_id, job_id, resume_id, match_score, matched_skills, missing_skills) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`, [studentId, jobId, resumeId, matchScore, JSON.stringify(matchedSkills || []), JSON.stringify(missingSkills || [])]);
+  return r.rows[0];
+};
+
+const getApplicationsByStudentId = async (studentId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT a.*, j.title, j.company, j.location FROM applications a JOIN jobs j ON a.job_id = j.id WHERE a.student_id = $1 ORDER BY a.created_at DESC`, [studentId]);
+  return r.rows;
+};
+
+const getApplicationsByJobId = async (jobId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT a.*, u.email, sp.full_name FROM applications a JOIN users u ON a.student_id = u.id LEFT JOIN student_profiles sp ON a.student_id = sp.user_id WHERE a.job_id = $1 ORDER BY a.match_score DESC`, [jobId]);
+  return r.rows;
+};
+
+const updateApplicationStatus = async (applicationId, newStatus, recruiterNotes = '') => {
+  await ensureSchema();
+  const app = await pool.query(`SELECT * FROM applications WHERE id = $1`, [applicationId]);
+  if (app.rows.length === 0) throw new Error('Application not found');
+  const oldStatus = app.rows[0].current_status;
+  const r = await pool.query(`UPDATE applications SET current_status = $1, recruiter_notes = $2, updated_at = NOW() WHERE id = $3 RETURNING *`, [newStatus, recruiterNotes || null, applicationId]);
+  await pool.query(`INSERT INTO application_status_history (application_id, old_status, new_status) VALUES ($1, $2, $3)`, [applicationId, oldStatus, newStatus]);
+  return r.rows[0];
+};
+
+const checkApplicationExists = async (studentId, jobId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT * FROM applications WHERE student_id = $1 AND job_id = $2`, [studentId, jobId]);
+  return r.rows[0] || null;
+};
+
+// Dashboard Analytics
+const getStudentDashboardData = async (studentId) => {
+  await ensureSchema();
+  const profile = await getStudentProfileByUserId(studentId);
+  const appStats = await pool.query(`SELECT current_status, COUNT(*)::int as count FROM applications WHERE student_id = $1 GROUP BY current_status`, [studentId]);
+  const applicationSummary = {};
+  appStats.rows.forEach(row => { applicationSummary[row.current_status] = row.count; });
+  return { profile, profileCompletionPercentage: profile?.profile_completion_percentage || 0, applicationSummary };
+};
+
+const getRecruiterDashboardData = async (recruiterId) => {
+  await ensureSchema();
+  const recruiter = await getRecruiterProfileByUserId(recruiterId);
+  if (!recruiter) return null;
+  const jobsRes = await pool.query(`SELECT COUNT(*)::int as count FROM jobs WHERE company_id = $1 AND is_active = true`, [recruiter.company_id]);
+  const applicantsRes = await pool.query(`SELECT COUNT(*)::int as count FROM applications a JOIN jobs j ON a.job_id = j.id WHERE j.company_id = $1`, [recruiter.company_id]);
+  const funnelRes = await pool.query(`SELECT current_status, COUNT(*)::int as count FROM applications a JOIN jobs j ON a.job_id = j.id WHERE j.company_id = $1 GROUP BY current_status`, [recruiter.company_id]);
+  const hiringFunnel = {};
+  funnelRes.rows.forEach(row => { hiringFunnel[row.current_status] = row.count; });
+  return { recruiter, activeJobs: jobsRes.rows[0].count, totalApplicants: applicantsRes.rows[0].count, hiringFunnel };
+};
+
+const getAdminDashboardData = async () => {
+  await ensureSchema();
+  const studentsRes = await pool.query(`SELECT COUNT(*)::int as count FROM users WHERE role = 'student'`);
+  const recruitersRes = await pool.query(`SELECT COUNT(*)::int as count FROM users WHERE role = 'recruiter'`);
+  const jobsRes = await pool.query(`SELECT COUNT(*)::int as count FROM jobs WHERE is_active = true`);
+  const applicationsRes = await pool.query(`SELECT COUNT(*)::int as count FROM applications`);
+  const appStatus = await pool.query(`SELECT current_status, COUNT(*)::int as count FROM applications GROUP BY current_status`);
+  const applicationStatusSummary = {};
+  appStatus.rows.forEach(row => { applicationStatusSummary[row.current_status] = row.count; });
+  return { totalStudents: studentsRes.rows[0].count, totalRecruiters: recruitersRes.rows[0].count, totalJobs: jobsRes.rows[0].count, totalApplications: applicationsRes.rows[0].count, applicationStatusSummary };
+};
+
+const calculateProfileCompletion = async (userId) => {
+  await ensureSchema();
+  const profile = await getStudentProfileByUserId(userId);
+  if (!profile) return 0;
+  let score = (profile.full_name ? 10 : 0) + (profile.phone ? 10 : 0) + (profile.college ? 10 : 0) + (profile.degree ? 10 : 0) + (profile.major ? 10 : 0) + (profile.graduation_year ? 10 : 0) + (profile.resume_text ? 20 : 0) + (Array.isArray(profile.extracted_skills) && profile.extracted_skills.length > 0 ? 10 : 0);
+  await pool.query(`UPDATE student_profiles SET profile_completion_percentage = $1, updated_at = NOW() WHERE user_id = $2`, [score, userId]);
+  return score;
+};
+
+const getJobsByCompanyId = async (companyId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT * FROM jobs WHERE company_id = $1 AND is_active = true ORDER BY created_at DESC`, [companyId]);
+  return r.rows;
+};
+
+// Call ensureSchema on module load
+ensureSchema().catch(err => {
+  console.error('[DB] Failed to initialize schema:', err);
+  process.exit(1);
+});
+
+// Also ensure schema is called if the db module is imported after initial load
+async function initializeDatabase() {
+  try {
+    await ensureSchema();
+  } catch (error) {
+    console.error('[DB] Schema initialization failed:', error);
+  }
+}
+
 module.exports = {
+  pool,
   ensureSchema,
   getJobCount,
   getJobStats,
@@ -490,4 +781,19 @@ module.exports = {
   findUserByEmail,
   createStudentProfile,
   getStudentProfileByUserId,
+  updateUserPassword,
+  createCompany,
+  getCompanyById,
+  createRecruiterProfile,
+  getRecruiterProfileByUserId,
+  createApplication,
+  getApplicationsByStudentId,
+  getApplicationsByJobId,
+  updateApplicationStatus,
+  checkApplicationExists,
+  getStudentDashboardData,
+  getRecruiterDashboardData,
+  getAdminDashboardData,
+  calculateProfileCompletion,
+  getJobsByCompanyId,
 };

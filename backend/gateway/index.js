@@ -30,17 +30,25 @@ app.use((req, res, next) => {
 });
 
 // Import Services
+const authService = require('../services/auth/routes');
 const studentService = require('../services/student/routes');
 const companyService = require('../services/company/routes');
 const matchingService = require('../services/matching/routes');
 const recommendationService = require('../services/recommendation/routes');
+const applicationService = require('../services/application/routes');
+const recruiterService = require('../services/recruiter/routes');
+const adminService = require('../services/admin/routes');
 
 // Route to Services
-app.use('/api/student', studentService); // includes /api/student/profile, /api/student/login, /api/student/register (Wait, auth is shared)
-app.use('/api/auth', studentService); // Map auth to student service for now
+app.use('/api/auth', authService);
+app.use('/api/student', studentService); // includes /api/student/profile, /api/student/dashboard
 app.use('/api/company', companyService);
 app.use('/api/match', matchingService);
 app.use('/api/recommendations', recommendationService); // Moved student matches here
+app.use('/api/student', recommendationService); // Expose student match route under /api/student/matches for frontend
+app.use('/api/applications', applicationService);
+app.use('/api/recruiter', recruiterService);
+app.use('/api/admin', adminService);
 
 // Backward compatibility for old frontend routes (temporarily)
 app.use('/api/student/matches', recommendationService);

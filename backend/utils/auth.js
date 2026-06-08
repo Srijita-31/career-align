@@ -5,6 +5,8 @@ const bcrypt = require('bcrypt');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'replace-with-strong-secret';
 const JWT_EXPIRES_IN = '7d'; // token validity
+const JWT_RESET_SECRET = process.env.JWT_RESET_SECRET || JWT_SECRET;
+const JWT_RESET_EXPIRES_IN = '1h';
 
 /**
  * Hash a plain‑text password.
@@ -35,6 +37,18 @@ function generateToken(payload) {
   return jwt.sign(payload, JWT_SECRET, { expiresIn: JWT_EXPIRES_IN });
 }
 
+function generateResetToken(email) {
+  return jwt.sign({ email, type: 'password_reset' }, JWT_RESET_SECRET, { expiresIn: JWT_RESET_EXPIRES_IN });
+}
+
+function verifyResetToken(token) {
+  const payload = jwt.verify(token, JWT_RESET_SECRET);
+  if (payload.type !== 'password_reset' || !payload.email) {
+    throw new Error('Invalid reset token.');
+  }
+  return payload.email;
+}
+
 /**
  * Middleware to verify JWT on protected routes.
  * Attaches `req.user` with payload if valid.
@@ -58,5 +72,7 @@ module.exports = {
   hashPassword,
   verifyPassword,
   generateToken,
+  generateResetToken,
+  verifyResetToken,
   authMiddleware,
 };

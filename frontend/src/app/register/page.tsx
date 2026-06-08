@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 
@@ -26,17 +27,20 @@ export default function Register() {
     }
     setLoading(true);
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001'}/api/auth/register`, {
+      const data = await apiFetch<{ status: string; token: string; user: { id?: number; email?: string; role?: string } }>("/api/auth/register", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password, role: "student" }),
       });
-      const data = await res.json();
-      if (res.ok && data.status === "ok") {
-        localStorage.setItem("jwt", data.token);
-        router.push("/dashboard");
+      localStorage.setItem("jwt", data.token);
+      const user = data.user || { email };
+      const role = (user.role || 'student').toLowerCase();
+      localStorage.setItem("careerAlignUser", JSON.stringify(user));
+      if (role === 'company' || role === 'recruiter') {
+        router.push('/recruiter/dashboard');
+      } else if (role === 'admin') {
+        router.push('/admin/dashboard');
       } else {
-        setError(data.message || "Registration failed. Please try again.");
+        router.push('/student/dashboard');
       }
     } catch (err: any) {
       setError(err.message || "Network error. Make sure the backend is running.");

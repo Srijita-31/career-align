@@ -3,18 +3,31 @@
 import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LayoutDashboard, Briefcase, FileText, FileCheck, LineChart, Settings } from "lucide-react";
+import { LayoutDashboard } from "lucide-react";
 
 export function Sidebar() {
   const pathname = usePathname();
+  const [userEmail, setUserEmail] = React.useState<string | null>(null);
+  const [role, setRole] = React.useState<string>('student');
+
+  React.useEffect(() => {
+    const storageValue = typeof window !== 'undefined' ? window.localStorage.getItem("careerAlignUser") : null;
+    if (storageValue) {
+      try {
+        const parsed = JSON.parse(storageValue);
+        setUserEmail(parsed?.email || null);
+        setRole((parsed?.role || 'student').toLowerCase());
+      } catch {
+        setUserEmail(null);
+        setRole('student');
+      }
+    }
+  }, []);
+
+  const dashboardHref = role === 'company' || role === 'recruiter' ? '/recruiter/dashboard' : role === 'admin' ? '/admin/dashboard' : '/student/dashboard';
 
   const navItems = [
-    { label: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
-    { label: "Jobs", href: "/dashboard/jobs", icon: Briefcase },
-    { label: "Applications", href: "/dashboard/applications", icon: FileCheck },
-    { label: "Resume", href: "/dashboard/resume", icon: FileText },
-    { label: "Analytics", href: "/dashboard/analytics", icon: LineChart },
-    { label: "Settings", href: "/dashboard/settings", icon: Settings },
+    { label: "Dashboard", href: dashboardHref, icon: LayoutDashboard },
   ];
 
   return (
@@ -48,8 +61,8 @@ export function Sidebar() {
             S
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-900 truncate">Student User</p>
-            <p className="text-xs text-gray-500 truncate">student@university.edu</p>
+            <p className="text-sm font-medium text-gray-900 truncate">{userEmail ? userEmail.split("@")[0] : "Student"}</p>
+            <p className="text-xs text-gray-500 truncate">{userEmail || "Not signed in"}</p>
           </div>
         </div>
       </div>

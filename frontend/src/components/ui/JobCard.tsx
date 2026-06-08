@@ -13,6 +13,7 @@ interface JobCardProps {
   matchedSkills: string[];
   missingSkills: string[];
   workMode: string;
+  applyUrl?: string;
 }
 
 export function JobCard({
@@ -23,7 +24,8 @@ export function JobCard({
   matchPercentage,
   matchedSkills,
   missingSkills,
-  workMode
+  workMode,
+  applyUrl
 }: JobCardProps) {
   return (
     <Card className="hover:border-blue-200 hover:shadow-md transition-all duration-200">
@@ -79,7 +81,15 @@ export function JobCard({
         </div>
 
         <div className="mt-6 pt-4 border-t border-gray-100 flex justify-end">
-          <Button>Apply Now</Button>
+          {applyUrl ? (
+            <a href={applyUrl} target="_blank" rel="noreferrer noopener">
+              <Button type="button">Apply Now</Button>
+            </a>
+          ) : (
+            <Button type="button" disabled>
+              Apply Now
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>

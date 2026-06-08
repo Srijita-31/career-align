@@ -1,15 +1,25 @@
 const express = require('express');
-const { createJob, getJobsByCompany, updateJob, deleteJob } = require('../../utils/db');
+const { createJob, getJobsByCompanyId, updateJob, deleteJob, getRecruiterProfileByUserId, getAllJobs } = require('../../utils/db');
 const { authMiddleware } = require('../../utils/auth');
 
 const router = express.Router();
 
+// Create job (recruiter posts job for their company)
 router.post('/jobs', authMiddleware, async (req, res) => {
   const { role, id: userId } = req.user;
-  if (role !== 'company') return res.status(403).json({ status: 'error', message: 'Only companies may create jobs.' });
-  const job = req.body;
-  if (!job.title || !job.apply_url) return res.status(400).json({ status: 'error', message: 'Missing required job fields.' });
+  if (role !== 'recruiter') return res.status(403).json({ status: 'error', message: 'Only recruiters may create jobs.' });
+  
   try {
+    const recruiterProfile = await getRecruiterProfileByUserId(userId);
+    if (!recruiterProfile) return res.status(400).json({ status: 'error', message: 'Recruiter profile not found' });
+    
+    const job = req.body;
+    if (!job.title || !job.apply_url) return res.status(400).json({ status: 'error', message: 'Missing required job fields.' });
+    
+    // Add recruiter and company IDs to job
+    job.recruiter_id = recruiterProfile.id;
+    job.company_id = recruiterProfile.company_id;
+    
     const created = await createJob(job, userId);
     return res.status(201).json({ status: 'ok', job: created });
   } catch (err) {
@@ -18,11 +28,16 @@ router.post('/jobs', authMiddleware, async (req, res) => {
   }
 });
 
+// Get jobs for recruiter's company
 router.get('/jobs', authMiddleware, async (req, res) => {
   const { role, id: userId } = req.user;
-  if (role !== 'company') return res.status(403).json({ status: 'error', message: 'Only companies may view their jobs.' });
+  if (role !== 'recruiter') return res.status(403).json({ status: 'error', message: 'Only recruiters may view jobs.' });
+  
   try {
-    const jobs = await getJobsByCompany(userId);
+    const recruiterProfile = await getRecruiterProfileByUserId(userId);
+    if (!recruiterProfile) return res.status(400).json({ status: 'error', message: 'Recruiter profile not found' });
+    
+    const jobs = await getJobsByCompanyId(recruiterProfile.company_id);
     return res.json({ status: 'ok', jobs });
   } catch (err) {
     console.error('Get company jobs error:', err);
@@ -30,9 +45,21 @@ router.get('/jobs', authMiddleware, async (req, res) => {
   }
 });
 
+// Get all jobs (public endpoint)
+router.get('/jobs/all', async (req, res) => {
+  try {
+    const jobs = await getAllJobs();
+    return res.json({ status: 'ok', jobs });
+  } catch (err) {
+    console.error('Get all jobs error:', err);
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// Update job (recruiter only)
 router.put('/jobs/:id', authMiddleware, async (req, res) => {
   const { role, id: userId } = req.user;
-  if (role !== 'company') return res.status(403).json({ status: 'error', message: 'Only companies may update jobs.' });
+  if (role !== 'recruiter') return res.status(403).json({ status: 'error', message: 'Only recruiters may update jobs.' });
   const jobId = parseInt(req.params.id, 10);
   const updates = req.body;
   try {
@@ -45,9 +72,10 @@ router.put('/jobs/:id', authMiddleware, async (req, res) => {
   }
 });
 
+// Delete job (recruiter only)
 router.delete('/jobs/:id', authMiddleware, async (req, res) => {
   const { role, id: userId } = req.user;
-  if (role !== 'company') return res.status(403).json({ status: 'error', message: 'Only companies may delete jobs.' });
+  if (role !== 'recruiter') return res.status(403).json({ status: 'error', message: 'Only recruiters may delete jobs.' });
   const jobId = parseInt(req.params.id, 10);
   try {
     await deleteJob(jobId, userId);

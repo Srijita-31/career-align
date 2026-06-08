@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { apiFetch } from "@/lib/api";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Logo } from "@/components/ui/Logo";
@@ -19,17 +20,21 @@ export default function Login() {
     setLoading(true);
     setError("");
     try {
-      const res = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4001'}/api/auth/login`, {
+      const data = await apiFetch<{ status: string; token: string; user: { id?: number; email?: string; role?: string } }>("/api/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
       });
-      const data = await res.json();
-      if (res.ok && data.status === "ok") {
-        localStorage.setItem("jwt", data.token);
-        router.push("/dashboard");
+      localStorage.setItem("jwt", data.token);
+      const user = data.user || { email };
+      const role = (user.role || 'student').toLowerCase();
+      localStorage.setItem("careerAlignUser", JSON.stringify(user));
+      // Role based redirect
+      if (role === 'company' || role === 'recruiter') {
+        router.push('/recruiter/dashboard');
+      } else if (role === 'admin') {
+        router.push('/admin/dashboard');
       } else {
-        setError(data.message || "Login failed");
+        router.push('/student/dashboard');
       }
     } catch (err: any) {
       setError(err.message || "An error occurred");
@@ -65,16 +70,11 @@ export default function Login() {
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-4 max-w-lg mt-8">
+          <div className="grid grid-cols-1 gap-4 max-w-lg mt-8">
             <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5">
               <Building className="w-6 h-6 text-blue-400 mb-3" />
-              <div className="text-2xl font-bold text-white mb-1">10k+</div>
-              <div className="text-sm text-slate-400 font-medium">Companies Hiring</div>
-            </div>
-            <div className="bg-white/5 backdrop-blur-sm border border-white/10 rounded-2xl p-5">
-              <Users className="w-6 h-6 text-indigo-400 mb-3" />
-              <div className="text-2xl font-bold text-white mb-1">98%</div>
-              <div className="text-sm text-slate-400 font-medium">Placement Rate</div>
+              <div className="text-lg font-semibold text-white mb-1">Real matches from your skills</div>
+              <div className="text-sm text-slate-300 font-medium">Sign in to connect your resume to the latest jobs available in the system.</div>
             </div>
           </div>
         </div>
@@ -143,7 +143,7 @@ export default function Login() {
                 </div>
 
                 <div className="text-sm">
-                  <a href="#" className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
+                  <a href="/forgot-password" className="font-medium text-blue-600 hover:text-blue-500 transition-colors">
                     Forgot password?
                   </a>
                 </div>
