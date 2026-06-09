@@ -54,8 +54,14 @@ function verifyResetToken(token) {
  * Attaches `req.user` with payload if valid.
  */
 function authMiddleware(req, res, next) {
+  // Try Authorization header first
+  let token = '';
   const authHeader = req.headers.authorization || '';
-  const token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  token = authHeader.replace(/^Bearer\s+/i, '').trim();
+  // If no token in header, fallback to HttpOnly cookie 'token'
+  if (!token) {
+    token = req.cookies?.token || '';
+  }
   if (!token) {
     return res.status(401).json({ status: 'error', message: 'Missing token' });
   }

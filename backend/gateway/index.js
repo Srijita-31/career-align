@@ -1,7 +1,9 @@
-require('dotenv').config({ quiet: true });
+require('dotenv').config({ path: require('path').resolve(__dirname, '../../.env'), quiet: true });
 
 const path = require('path');
 const express = require('express');
+const cors = require('cors');
+const cookieParser = require('cookie-parser');
 const {
   countStaleJobEmbeddings,
   ensureSchema,
@@ -17,17 +19,16 @@ const PORT = process.env.PORT || 4001; // Gateway port
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
+app.use(cookieParser());
 
-// Optional: CORS configuration could be added here if frontend is on a different domain
-app.use((req, res, next) => {
-  res.header("Access-Control-Allow-Origin", "*");
-  res.header("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept, Authorization");
-  res.header("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
-});
+// CORS: allow the frontend origin with credentials (cookies)
+const FRONTEND_ORIGIN = process.env.FRONTEND_URL || 'http://localhost:3000';
+app.use(cors({
+  origin: FRONTEND_ORIGIN,
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization'],
+}));
 
 // Import Services
 const authService = require('../services/auth/routes');
@@ -88,6 +89,14 @@ app.get('/api/health', async (_, res) => {
   } catch (error) {
     res.status(503).json({ status: 'error', database: error.message });
   }
+});
+
+// Root endpoint to prevent "Cannot GET /"
+app.get('/', (req, res) => {
+  res.json({ 
+    message: 'Welcome to the Career Align API', 
+    healthCheck: '/api/health' 
+  });
 });
 
 // Start Gateway and Backend Systems
