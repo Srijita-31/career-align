@@ -355,7 +355,7 @@ const ensureSchema = async () => {
     await pool.query(`ALTER TABLE student_profiles ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
   } catch (e) {}
 };
-};
+
 
 const getJobCount = async () => {
   await ensureSchema();
@@ -746,11 +746,12 @@ const getJobsByCompanyId = async (companyId) => {
 };
 
 // Call ensureSchema on module load
+/*
 ensureSchema().catch(err => {
   console.error('[DB] Failed to initialize schema:', err);
   process.exit(1);
 });
-
+*/
 // Also ensure schema is called if the db module is imported after initial load
 async function initializeDatabase() {
   try {
