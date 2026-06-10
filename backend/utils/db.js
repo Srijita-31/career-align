@@ -96,8 +96,11 @@ const alignEmbeddingDimensions = async () => {
   await pool.query(`ALTER TABLE jobs ALTER COLUMN embedding TYPE vector(${EMBEDDING_DIMENSIONS})`);
 };
 
+let schemaPromise = null;
 const ensureSchema = async () => {
-  await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
+  if (schemaPromise) return schemaPromise;
+  schemaPromise = (async () => {
+    await pool.query('CREATE EXTENSION IF NOT EXISTS vector');
   await pool.query(`
     CREATE TABLE IF NOT EXISTS companies (
       id BIGSERIAL PRIMARY KEY,
@@ -354,8 +357,9 @@ const ensureSchema = async () => {
   try {
     await pool.query(`ALTER TABLE student_profiles ADD COLUMN updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()`);
   } catch (e) {}
+  })();
+  return schemaPromise;
 };
-
 
 const getJobCount = async () => {
   await ensureSchema();

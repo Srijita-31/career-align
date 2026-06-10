@@ -57,14 +57,28 @@ export function Sidebar() {
       </div>
       <div className="p-4 border-t border-gray-200">
         <div className="flex items-center gap-3 px-3 py-2">
-          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
-            S
+          <div className="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold uppercase">
+            {userEmail ? userEmail.charAt(0) : "S"}
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-gray-900 truncate">{userEmail ? userEmail.split("@")[0] : "Student"}</p>
             <p className="text-xs text-gray-500 truncate">{userEmail || "Not signed in"}</p>
           </div>
         </div>
+        {userEmail && (
+          <div className="mt-2 px-3">
+            <button 
+              onClick={() => {
+                localStorage.removeItem('jwt');
+                localStorage.removeItem('careerAlignUser');
+                window.location.href = '/login';
+              }}
+              className="w-full text-left text-sm text-red-600 hover:text-red-700 font-medium py-1"
+            >
+              Sign Out
+            </button>
+          </div>
+        )}
       </div>
     </aside>
   );

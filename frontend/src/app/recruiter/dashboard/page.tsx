@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/Button";
 import { apiFetch } from "@/lib/api";
 
 function RecruiterContent() {
+  const [data, setData] = useState<any>(null);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -15,10 +16,16 @@ function RecruiterContent() {
     let active = true;
     const load = async () => {
       try {
-        const data = await apiFetch<{ status: string; jobs: any[] }>("/api/company/jobs");
-        if (active) setJobs(data.jobs || []);
+        const [dashData, jobsData] = await Promise.all([
+          apiFetch<any>("/api/recruiter/dashboard"),
+          apiFetch<{ status: string; jobs: any[] }>("/api/company/jobs")
+        ]);
+        if (active) {
+          setData(dashData);
+          setJobs(jobsData.jobs || []);
+        }
       } catch (err: any) {
-        if (active) setError(err.message || "Unable to load jobs");
+        if (active) setError(err.message || "Unable to load dashboard data");
       } finally {
         if (active) setLoading(false);
       }
@@ -27,75 +34,78 @@ function RecruiterContent() {
     return () => { active = false; };
   }, []);
 
-  if (loading) return <div className="p-6">Loading jobs...</div>;
+  if (loading) return <div className="p-6">Loading your workspace...</div>;
   if (error) return <div className="p-6 text-red-600">{error}</div>;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-6 max-w-6xl mx-auto">
       <div className="flex items-center justify-between">
-        <h2 className="text-xl font-semibold">Your Jobs</h2>
-        <Button onClick={() => window.location.href = '/recruiter/jobs/new'}>Create Job</Button>
+        <h2 className="text-2xl font-bold text-slate-900">Recruiter Dashboard</h2>
+        <Button onClick={() => window.location.href = '/recruiter/jobs/new'}>Post a New Job</Button>
       </div>
 
-      {jobs.length === 0 ? (
-        <div className="rounded-xl bg-white border p-6 text-center">You have no active jobs. Create one to start receiving applicants.</div>
-      ) : (
-        <div className="grid grid-cols-1 gap-4">
-          {jobs.map(job => (
-            <div key={job.id} className="bg-white rounded-xl border p-4">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="text-lg font-semibold">{job.title}</h3>
-                  <div className="text-sm text-gray-600">{job.location} • {job.company}</div>
-                </div>
-                <div className="text-right">
-                  <div className="text-sm text-gray-500">{job.posted_date || ''}</div>
-                  <div className="mt-2 flex gap-2">
-                    <Button onClick={() => window.location.href = `/recruiter/jobs/${job.id}`}>View</Button>
-                    <Button onClick={async () => {
-                      if (!confirm('Delete this job?')) return;
-                      try {
-                        await apiFetch(`/api/company/jobs/${job.id}`, { method: 'DELETE' });
-                        setJobs(prev => prev.filter(j => j.id !== job.id));
-                      } catch (e) { alert('Unable to delete job'); }
-                    }}>Delete</Button>
+      {/* Metrics Row */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center">
+          <div className="text-4xl font-extrabold text-blue-600 mb-2">{data?.activeJobs || 0}</div>
+          <div className="text-slate-500 font-medium">Active Jobs</div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center">
+          <div className="text-4xl font-extrabold text-indigo-600 mb-2">{data?.totalApplicants || 0}</div>
+          <div className="text-slate-500 font-medium">Total Applicants</div>
+        </div>
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 flex flex-col justify-center items-center text-center">
+          <div className="text-4xl font-extrabold text-green-600 mb-2">{data?.hiringFunnel?.shortlisted || 0}</div>
+          <div className="text-slate-500 font-medium">Shortlisted Candidates</div>
+        </div>
+      </div>
+
+      <div className="mt-8">
+        <h3 className="text-xl font-semibold text-slate-800 mb-4">Your Posted Jobs</h3>
+        {jobs.length === 0 ? (
+          <div className="rounded-2xl bg-white shadow-sm border border-slate-100 p-12 text-center">
+            <h4 className="text-lg font-semibold text-slate-700 mb-2">No active jobs</h4>
+            <p className="text-slate-500 mb-6">You have not posted any jobs yet. Create one to start receiving applicants.</p>
+            <Button onClick={() => window.location.href = '/recruiter/jobs/new'}>Post your first job</Button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 gap-4">
+            {jobs.map(job => (
+              <div key={job.id} className="bg-white rounded-xl shadow-sm border border-slate-100 p-6 transition-all hover:shadow-md">
+                <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-slate-900">{job.title}</h3>
+                    <div className="text-sm text-slate-500 mt-1 flex flex-wrap gap-2">
+                      <span className="bg-slate-100 px-2 py-1 rounded-md">{job.location || 'Remote'}</span>
+                      <span className="bg-slate-100 px-2 py-1 rounded-md">{job.work_mode || 'Full-time'}</span>
+                      {job.salary && <span className="text-slate-600 px-2 py-1">{job.salary}</span>}
+                    </div>
+                  </div>
+                  <div className="flex gap-3 w-full sm:w-auto">
+                    <Button variant="outline" className="flex-1 sm:flex-none" onClick={() => window.location.href = `/recruiter/jobs/${job.id}`}>View Applicants</Button>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-        </div>
-      )}
+            ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
 
-import { useRouter } from "next/navigation";
-
 export default function RecruiterDashboard() {
-  const router = useRouter();
-
-  useEffect(() => {
-    const token = localStorage.getItem('jwt');
-    const user = JSON.parse(localStorage.getItem('careerAlignUser') || 'null');
-    if (!token || !user) return router.push('/login');
-    const role = (user.role || 'student').toLowerCase();
-    if (!(role === 'company' || role === 'recruiter')) {
-      // Redirect students/admins to their dashboards
-      if (role === 'admin') return router.push('/admin/dashboard');
-      return router.push('/student/dashboard');
-    }
-  }, [router]);
-
   return (
-    <div className="flex min-h-screen bg-gray-50 flex-col font-sans">
-      <Navbar />
-      <div className="flex flex-1 overflow-hidden">
-        <Sidebar />
-        <main className="flex-1 overflow-y-auto p-6 lg:p-8">
-          <RecruiterContent />
-        </main>
+    <ProtectedRoute requiredRole="recruiter">
+      <div className="flex min-h-screen bg-gray-50 flex-col font-sans">
+        <Navbar />
+        <div className="flex flex-1 overflow-hidden">
+          <Sidebar />
+          <main className="flex-1 overflow-y-auto p-6 lg:p-8">
+            <RecruiterContent />
+          </main>
+        </div>
       </div>
-    </div>
+    </ProtectedRoute>
   );
 }

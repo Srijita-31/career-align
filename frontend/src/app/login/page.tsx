@@ -24,10 +24,9 @@ export default function Login() {
         method: "POST",
         body: JSON.stringify({ email, password }),
       });
-      localStorage.setItem("jwt", data.token);
-      const user = data.user || { email };
-      const role = (user.role || 'student').toLowerCase();
-      localStorage.setItem("careerAlignUser", JSON.stringify(user));
+
+      // The backend sets an HttpOnly cookie with the JWT token
+      const role = (data.user.role || 'student').toLowerCase();
       // Role based redirect
       if (role === 'company' || role === 'recruiter') {
         router.push('/recruiter/dashboard');

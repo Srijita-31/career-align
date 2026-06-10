@@ -1,11 +1,12 @@
-FROM mcr.microsoft.com/playwright:v1.38.0-jammy
+FROM node:22-alpine
 
 WORKDIR /app
 
-ENV PUPPETEER_SKIP_DOWNLOAD=true
+# Prevent unnecessary Chromium download (if playwright not needed at runtime)
+ENV PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD=1
 
 COPY package*.json ./
-RUN npm ci --omit=dev
+RUN npm install --omit=dev
 
 COPY . .
 

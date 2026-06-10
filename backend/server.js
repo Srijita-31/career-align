@@ -1,4 +1,5 @@
 require('dotenv').config({ quiet: true });
+const cookieParser = require('cookie-parser');
 
 const path = require('path');
 const bcrypt = require('bcrypt');
@@ -28,6 +29,7 @@ const { startScrapeScheduler } = require('./scheduler/scrapeScheduler');
 
 const upload = multer({ dest: path.join(__dirname, 'tmp') });
 const app = express();
+app.use(cookieParser());
 const PORT = process.env.PORT || 4000;
 
 app.use(express.json());
@@ -68,7 +70,9 @@ app.post('/api/auth/register', async (req, res) => {
     const passwordHash = await hashPassword(password);
     const user = await createUser(email, passwordHash, role || 'student');
     const token = generateToken({ id: user.id, role: user.role });
-    return res.status(201).json({ status: 'ok', token, user: { id: user.id, email: user.email, role: user.role } });
+      // Set HttpOnly cookie for session token
+      res.cookie('token', token, { httpOnly: true, sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
+      return res.status(201).json({ status: 'ok', token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (err) {
     console.error('Register error:', err);
     return res.status(500).json({ status: 'error', message: err.message });
@@ -84,7 +88,9 @@ app.post('/api/auth/login', async (req, res) => {
     const valid = await verifyPassword(password, user.password_hash);
     if (!valid) return res.status(401).json({ status: 'error', message: 'Invalid credentials.' });
     const token = generateToken({ id: user.id, role: user.role });
-    return res.json({ status: 'ok', token, user: { id: user.id, email: user.email, role: user.role } });
+      // Set HttpOnly cookie for session token
+      res.cookie('token', token, { httpOnly: true, sameSite: 'strict', maxAge: 7 * 24 * 60 * 60 * 1000 });
+      return res.json({ status: 'ok', token, user: { id: user.id, email: user.email, role: user.role } });
   } catch (err) {
     console.error('Login error:', err);
     return res.status(500).json({ status: 'error', message: err.message });
@@ -94,10 +100,14 @@ app.post('/api/auth/login', async (req, res) => {
 // Company job management routes
 app.post('/api/company/jobs', authMiddleware, async (req, res) => {
   const { role, id: userId } = req.user;
-  if (role !== 'company') return res.status(403).json({ status: 'error', message: 'Only companies may create jobs.' });
+  if (role !== 'recruiter') return res.status(403).json({ status: 'error', message: 'Only recruiters may create jobs.' });
   const job = req.body;
   if (!job.title || !job.apply_url) return res.status(400).json({ status: 'error', message: 'Missing required job fields.' });
   try {
+    const recruiterProfile = await getRecruiterProfileByUserId(userId);
+    if (!recruiterProfile) throw new Error('Recruiter profile not found');
+    job.recruiter_id = userId;
+    job.company_id = recruiterProfile.company_id;
     const created = await createJob(job, userId);
     return res.status(201).json({ status: 'ok', job: created });
   } catch (err) {
@@ -108,12 +118,14 @@ app.post('/api/company/jobs', authMiddleware, async (req, res) => {
 
 app.get('/api/company/jobs', authMiddleware, async (req, res) => {
   const { role, id: userId } = req.user;
-  if (role !== 'company') return res.status(403).json({ status: 'error', message: 'Only companies may view their jobs.' });
+  if (role !== 'recruiter') return res.status(403).json({ status: 'error', message: 'Only recruiters may view their jobs.' });
   try {
-    const jobs = await getJobsByCompany(userId);
+    const recruiterProfile = await getRecruiterProfileByUserId(userId);
+    if (!recruiterProfile) throw new Error('Recruiter profile not found');
+    const jobs = await getJobsByCompanyId(recruiterProfile.company_id);
     return res.json({ status: 'ok', jobs });
   } catch (err) {
-    console.error('Get company jobs error:', err);
+    console.error('Get recruiter jobs error:', err);
     return res.status(500).json({ status: 'error', message: err.message });
   }
 });
@@ -237,7 +249,8 @@ app.get('*', (_, res) => {
 ensureSchema()
   .then(() => {
     startScrapeScheduler();
-    app.listen(PORT, () => console.log(`Career Align portal running on http://localhost:${PORT}`));
+    app.use('/api/dashboard', require('./services/dashboard'));
+
     // Re‑embed stale job embeddings
     countStaleJobEmbeddings()
       .then(count => {
