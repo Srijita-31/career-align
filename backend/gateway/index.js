@@ -39,6 +39,7 @@ const recommendationService = require('../services/recommendation/routes');
 const applicationService = require('../services/application/routes');
 const recruiterService = require('../services/recruiter/routes');
 const adminService = require('../services/admin/routes');
+const notificationService = require('../services/notifications/routes');
 
 // Route to Services
 app.use('/api/auth', authService);
@@ -50,6 +51,7 @@ app.use('/api/student', recommendationService); // Expose student match route un
 app.use('/api/applications', applicationService);
 app.use('/api/recruiter', recruiterService);
 app.use('/api/admin', adminService);
+app.use('/api/notifications', notificationService);
 
 // Backward compatibility for old frontend routes (temporarily)
 app.use('/api/student/matches', recommendationService);

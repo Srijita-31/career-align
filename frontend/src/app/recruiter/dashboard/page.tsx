@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import ProtectedRoute from "@/components/ProtectedRoute";
 import { Sidebar } from "@/components/ui/Sidebar";
 import { Navbar } from "@/components/ui/Navbar";
 import { Button } from "@/components/ui/Button";

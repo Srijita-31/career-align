@@ -36,6 +36,18 @@ router.post('/apply', authMiddleware, async (req, res) => {
     // Create application
     const application = await db.createApplication(studentId, jobId, null, matchScore, matchedSkills, missingSkills);
 
+    // Notify the job's recruiter
+    const jobRow = job.rows[0];
+    if (jobRow.recruiter_id) {
+      const studentProfile = await db.getStudentProfileByUserId(studentId);
+      await db.createNotification(
+        jobRow.recruiter_id, 'new_application',
+        'New Application Received',
+        `${studentProfile?.full_name || 'A student'} applied to "${jobRow.title}".`,
+        'application', application.id, `/recruiter/jobs/${jobId}`
+      );
+    }
+
     res.json({ message: 'Application submitted', application });
   } catch (error) {
     console.error('Apply error:', error);

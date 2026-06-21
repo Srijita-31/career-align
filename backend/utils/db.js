@@ -684,13 +684,19 @@ const getApplicationsByJobId = async (jobId) => {
   return r.rows;
 };
 
-const updateApplicationStatus = async (applicationId, newStatus, recruiterNotes = '') => {
+const getApplicationById = async (applicationId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT * FROM applications WHERE id = $1`, [applicationId]);
+  return r.rows[0] || null;
+};
+
+const updateApplicationStatus = async (applicationId, newStatus, recruiterNotes = '', changedByUserId = null) => {
   await ensureSchema();
   const app = await pool.query(`SELECT * FROM applications WHERE id = $1`, [applicationId]);
   if (app.rows.length === 0) throw new Error('Application not found');
   const oldStatus = app.rows[0].current_status;
   const r = await pool.query(`UPDATE applications SET current_status = $1, recruiter_notes = $2, updated_at = NOW() WHERE id = $3 RETURNING *`, [newStatus, recruiterNotes || null, applicationId]);
-  await pool.query(`INSERT INTO application_status_history (application_id, old_status, new_status) VALUES ($1, $2, $3)`, [applicationId, oldStatus, newStatus]);
+  await pool.query(`INSERT INTO application_status_history (application_id, old_status, new_status, changed_by_user_id) VALUES ($1, $2, $3, $4)`, [applicationId, oldStatus, newStatus, changedByUserId]);
   return r.rows[0];
 };
 
@@ -732,6 +738,41 @@ const getAdminDashboardData = async () => {
   const applicationStatusSummary = {};
   appStatus.rows.forEach(row => { applicationStatusSummary[row.current_status] = row.count; });
   return { totalStudents: studentsRes.rows[0].count, totalRecruiters: recruitersRes.rows[0].count, totalJobs: jobsRes.rows[0].count, totalApplications: applicationsRes.rows[0].count, applicationStatusSummary };
+};
+
+// Notifications
+const createNotification = async (userId, type, title, message, relatedEntityType = null, relatedEntityId = null, actionUrl = null) => {
+  await ensureSchema();
+  const r = await pool.query(`
+    INSERT INTO notifications (user_id, type, title, message, related_entity_type, related_entity_id, action_url)
+    VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *
+  `, [userId, type, title, message, relatedEntityType, relatedEntityId, actionUrl]);
+  return r.rows[0];
+};
+
+const getNotificationsByUserId = async (userId, limit = 20) => {
+  await ensureSchema();
+  const r = await pool.query(`
+    SELECT * FROM notifications WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2
+  `, [userId, limit]);
+  return r.rows;
+};
+
+const getUnreadNotificationCount = async (userId) => {
+  await ensureSchema();
+  const r = await pool.query(`SELECT COUNT(*)::int AS count FROM notifications WHERE user_id = $1 AND is_read = false`, [userId]);
+  return r.rows[0].count;
+};
+
+const markNotificationAsRead = async (notificationId, userId) => {
+  await ensureSchema();
+  const r = await pool.query(`UPDATE notifications SET is_read = true WHERE id = $1 AND user_id = $2 RETURNING *`, [notificationId, userId]);
+  return r.rows[0] || null;
+};
+
+const markAllNotificationsAsRead = async (userId) => {
+  await ensureSchema();
+  await pool.query(`UPDATE notifications SET is_read = true WHERE user_id = $1`, [userId]);
 };
 
 const calculateProfileCompletion = async (userId) => {
@@ -796,9 +837,15 @@ module.exports = {
   getApplicationsByJobId,
   updateApplicationStatus,
   checkApplicationExists,
+  getApplicationById,
   getStudentDashboardData,
   getRecruiterDashboardData,
   getAdminDashboardData,
   calculateProfileCompletion,
   getJobsByCompanyId,
+  createNotification,
+  getNotificationsByUserId,
+  getUnreadNotificationCount,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
 };

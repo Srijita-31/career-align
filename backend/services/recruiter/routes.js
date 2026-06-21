@@ -58,7 +58,20 @@ router.put('/application/:applicationId/status', authMiddleware, async (req, res
       return res.status(400).json({ error: 'Invalid status' });
     }
 
-    const updated = await db.updateApplicationStatus(req.params.applicationId, status, notes, req.user.id);
+    const updated = await db.updateApplicationStatus(req.params.applicationId, status, notes || '', req.user.id);
+    
+    // Notify the student about status change
+    const app = await db.getApplicationById(req.params.applicationId);
+    if (app) {
+      const statusLabels = { applied: 'Applied', under_review: 'Under Review', shortlisted: 'Shortlisted', rejected: 'Rejected', interview: 'Interview', selected: 'Selected' };
+      await db.createNotification(
+        app.student_id, 'application_status',
+        `Application ${statusLabels[status] || status}`,
+        `Your application status has been updated to "${statusLabels[status] || status}".`,
+        'application', app.id, `/student/dashboard`
+      );
+    }
+
     res.json({ message: 'Application status updated', application: updated });
   } catch (error) {
     res.status(500).json({ error: error.message });

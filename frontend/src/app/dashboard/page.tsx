@@ -2,6 +2,8 @@ import { Sidebar } from "@/components/ui/Sidebar";
 import { Navbar } from "@/components/ui/Navbar";
 import DashboardContent from "./DashboardContent";
 
+export const dynamic = 'force-dynamic';
+
 export default function Dashboard() {
   return (
     <div className="flex min-h-screen bg-gray-50 flex-col font-sans">

@@ -28,6 +28,12 @@ export function Sidebar() {
 
   const navItems = [
     { label: "Dashboard", href: dashboardHref, icon: LayoutDashboard },
+    ...(role === 'admin' ? [
+      { label: "Students", href: "/admin/students", icon: LayoutDashboard },
+      { label: "Recruiters", href: "/admin/recruiters", icon: LayoutDashboard },
+      { label: "Jobs", href: "/admin/jobs", icon: LayoutDashboard },
+      { label: "Applications", href: "/admin/applications", icon: LayoutDashboard },
+    ] : []),
   ];
 
   return (
