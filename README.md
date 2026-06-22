@@ -298,31 +298,41 @@ npm run scrape
 ### Local Development
 
 ```powershell
-# Install backend dependencies
+# 1. Start PostgreSQL with pgvector
+docker run -d --name career-align-db `
+  -e POSTGRES_USER=career_align `
+  -e POSTGRES_PASSWORD=career_align `
+  -e POSTGRES_DB=career_align `
+  -p 5432:5432 `
+  pgvector/pgvector:pg16
+
+# 2. Configure environment
+copy .env.example .env
+# Edit .env and set PORT=4001 (or keep 4000)
+
+# 3. Install and start the backend API Gateway
 cd backend
 npm install
-
-# Start PostgreSQL
-docker compose up -d postgres
-
-# Copy and configure .env
-cp .env.example .env
-
-# Start the API Gateway (port 4001)
 npm start
+# API Gateway runs on http://localhost:4001
 
-# In a separate terminal — start the Next.js frontend (port 3000)
+# 4. In a separate terminal — start the Next.js frontend
 cd frontend
 npm install
 npm run dev
+# Frontend runs on http://localhost:3000
 ```
 
-Visit `http://localhost:3000` for the new frontend or `http://localhost:4001` for the API.
+Visit `http://localhost:3000` for the frontend or `http://localhost:4001` for the API.
 
-### Docker (full stack)
+### Stop the application
 
 ```powershell
-docker compose up --build
+# Stop PostgreSQL
+docker stop career-align-db
+docker rm career-align-db
+
+# Stop backend/frontend: press Ctrl+C in their terminals
 ```
 
 ### Environment Variables (`.env`)
