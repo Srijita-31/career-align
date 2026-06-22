@@ -1,338 +1,192 @@
 # Career Align
 
-Career Align is a live job recommendation portal. It scrapes job listings from configured job boards, converts jobs and candidate profiles into embeddings, stores jobs in PostgreSQL with `pgvector`, and ranks recommendations using both semantic similarity and structured fit signals such as skills, role family, seniority, location, and work mode.
+Career Align is a full-stack job recommendation portal with multi-role authentication (students, recruiters, admins). It scrapes job listings from configured job boards, converts jobs and candidate profiles into vector embeddings, stores jobs in PostgreSQL with `pgvector`, and ranks recommendations using semantic similarity combined with structured fit signals (skills, role family, seniority, location, work mode).
 
-By default the app uses a local embedding model, so OpenAI billing is not required.
+By default the app uses a local embedding model (`Xenova/all-MiniLM-L6-v2`), so OpenAI billing is not required.
 
-## Architecture
-
-```text
-Browser UI
-  -> POST /api/match
-  -> Express API
-  -> Resume/profile parser
-  -> Profile enrichment
-  -> Profile embedding
-  -> PostgreSQL pgvector similarity search
-  -> Structured ranking layer
-  -> Ranked job cards
-
-Background refresh
-  -> Crawlee job scrapers
-  -> Job normalization
-  -> Job enrichment
-  -> Background job refresh worker
-  -> Job embedding
-  -> PostgreSQL jobs table
-```
-
-## Request Flow
-
-1. The user fills out the browser form and optionally uploads a resume.
-2. `public/app.js` submits the form to `POST /api/match`.
-3. `server.js` receives the request and stores the uploaded file temporarily with `multer`.
-4. `utils/resumeParser.js` extracts text from PDF, DOCX, or TXT resumes.
-5. `utils/enrichment.js` enriches the candidate profile with normalized skills, role family, and seniority.
-6. `utils/jobAggregator.js` builds a semantic profile query.
-7. `utils/db.js` creates an embedding for the profile query.
-8. PostgreSQL `pgvector` searches stored job embeddings by cosine distance.
-9. `utils/jobAggregator.js` reranks results using semantic similarity plus structured fit signals.
-10. The frontend renders ranked job cards with score, source, role metadata, explanation, and apply link.
+---
 
 ## Tech Stack
 
-Backend:
+**Backend:** Node.js 18+, Express, PostgreSQL 16 + `pgvector`, Crawlee (Cheerio + Playwright), `@xenova/transformers`, bcrypt, JWT, cookie-parser, node-cron, multer, pdf-parse, mammoth, nodemailer
 
-- Node.js
-- Express
-- PostgreSQL
-- `pgvector`
-- `pg`
-- `multer`
-- `pdf-parse`
-- `mammoth`
-- `node-cron`
+**Frontend (new):** Next.js 16.2.7, React 19.2.4, TypeScript 5, Tailwind CSS 4, recharts, lucide-react
 
-Frontend:
+**Frontend (legacy):** HTML, CSS, Vanilla JavaScript, Fetch API
 
-- HTML
-- CSS
-- Vanilla JavaScript
-- Fetch API
+**Infrastructure:** Docker, Render deployment
 
-Scraping:
+---
 
-- Crawlee
-- Cheerio crawler
-- Playwright crawler
-- Puppeteer dependency is installed but the active crawler implementation uses Crawlee with Cheerio/Playwright.
+## Architecture
 
-Embeddings:
-
-- Local default: `Xenova/all-MiniLM-L6-v2`
-- Optional OpenAI: `text-embedding-3-small`
-- Local embedding dimensions: `384`
-- OpenAI embedding dimensions: usually `1536` for `text-embedding-3-small`
-
-Infrastructure:
-
-- Docker Compose
-- `pgvector/pgvector:pg16`
-
-## Important Files
-
-```text
-server.js                         Express app and API routes
-public/index.html                 Browser UI
-public/app.js                     Form submission and result rendering
-public/styles.css                 UI styling
-utils/resumeParser.js             Resume and form profile parsing
-utils/enrichment.js               Skill, role, seniority, and job metadata enrichment
-utils/embeddings.js               Local/OpenAI embedding generation
-utils/db.js                       PostgreSQL schema, storage, and vector search
-utils/jobAggregator.js            Recommendation orchestration and scoring
-utils/jobRefreshQueue.js          Starts and tracks the background refresh worker
-utils/sourceCrawlers.js           Live job source crawlers
-utils/scraperService.js           Manual scrape refresh entrypoint
-scheduler/scrapeScheduler.js      Scheduled scrape refresh every 6 hours
-workers/jobRefreshWorker.js       Isolated scraping and embedding worker process
-config/app.json                   Job source, default profile, search, and scheduler config
-config/rules.json                 Skill, role family, seniority, and resume parsing rules
-config/scoring.json               Recommendation weights and result limits
-config/sources.json               Source enablement, crawler type, and search URL templates
-docker-compose.yml                App and PostgreSQL services
 ```
+                          ┌─────────────────────┐
+                          │   Next.js Frontend   │  (port 3000)
+                          │  (React/TypeScript)  │
+                          └──────────┬──────────┘
+                                     │  API calls (JWT cookies)
+                                     ▼
+                          ┌─────────────────────┐
+                          │    API Gateway       │  (port 4001)
+                          │  gateway/index.js    │
+                          └──┬────┬────┬────┬───┘
+                             │    │    │    │
+              ┌──────────────┼────┼────┼────┼──────────────┐
+              ▼              ▼    ▼    ▼    ▼              ▼
+         ┌─────────┐ ┌────────┐ ┌────────┐ ┌─────────┐ ┌──────────┐
+         │  Auth   │ │Student │ │Company │ │Recruiter│ │  Admin   │
+         │ Service │ │Service │ │Service │ │ Service │ │ Service  │
+         └─────────┘ └────────┘ └────────┘ └─────────┘ └──────────┘
+              │                                            │
+              ▼                                            ▼
+         ┌─────────┐ ┌────────────┐ ┌────────┐ ┌──────────────┐
+         │Matching │ │Recommendatn│ │Applic. │ │Notifications │
+         │ Service │ │  Service   │ │Service │ │   Service    │
+         └────┬────┘ └─────┬──────┘ └───┬────┘ └──────┬───────┘
+              │            │            │              │
+              └────────────┴────────────┴──────────────┘
+                                  │
+                                  ▼
+                     ┌─────────────────────┐
+                     │   PostgreSQL 16 +    │
+                     │   pgvector (jobs,     │
+                     │   users, profiles,    │
+                     │   applications, etc.) │
+                     └─────────────────────┘
+
+  Background Pipeline (separate process):
+     Crawlee scrapers → Job normalization → Enrichment
+     → Embedding → PostgreSQL jobs table
+     (triggered by cron every 6 hours or manually)
+```
+
+---
+
+## Request Flow
+
+1. A student registers/logs in via the Next.js frontend (or legacy HTML UI).
+2. The student fills out their profile (skills, target roles, resume upload).
+3. `GET /api/recommendations/matches` triggers the recommendation engine.
+4. `utils/enrichment.js` enriches the student profile with normalized skills, role family, and seniority.
+5. `utils/embeddings.js` generates an embedding for the profile query.
+6. PostgreSQL `pgvector` searches stored job embeddings by cosine distance.
+7. `utils/jobAggregator.js` reranks results using a multi-factor weighted score.
+8. The frontend displays ranked job cards with match breakdown and an "Apply" button.
+9. Applications are tracked through a full lifecycle: applied → under_review → shortlisted → interview → selected/rejected.
+
+---
 
 ## API Routes
 
-### `POST /api/match`
+### Authentication (`/api/auth`)
 
-Accepts candidate profile fields and an optional resume file.
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/auth/register` | No | Register as student, recruiter, or admin |
+| POST | `/api/auth/login` | No | Login, returns JWT in httpOnly cookie |
+| POST | `/api/auth/forgot-password` | No | Send password reset email |
+| POST | `/api/auth/reset-password` | No | Reset password with token |
+| GET | `/api/auth/me` | Yes | Get current authenticated user info |
 
-Returns:
+### Student (`/api/student`)
 
-- Parsed profile
-- Ranked jobs
-- Recommendation explanations
-- Match breakdown fields
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/student/profile` | Yes | Get student profile |
+| POST | `/api/student/profile` | Yes | Create/update student profile |
+| GET | `/api/student/dashboard` | Yes | Student dashboard data |
+| GET | `/api/student/matches` | Yes | Get recommended jobs for student |
 
-Main code path:
+### Recruiter (`/api/recruiter`)
 
-```text
-server.js
-  -> parseResume()
-  -> matchJobs()
-  -> searchSimilarJobs()
-  -> enrich/rerank results
-```
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/recruiter/profile` | Yes | Get recruiter profile |
+| POST | `/api/recruiter/profile` | Yes | Create recruiter profile |
+| GET | `/api/recruiter/dashboard` | Yes | Recruiter dashboard data |
+| GET | `/api/recruiter/job/:jobId/applicants` | Yes | Get applicants for a job |
+| PUT | `/api/recruiter/application/:appId/status` | Yes | Update application status |
 
-### `POST /api/admin/refresh-jobs`
+### Company & Jobs (`/api/company`)
 
-Queues the background worker to scrape and embed refreshed jobs. The API returns immediately while the worker continues separately from the web server.
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/company/jobs` | Yes (recruiter) | Create a job posting |
+| GET | `/api/company/jobs` | Yes (recruiter) | Get jobs for recruiter's company |
+| GET | `/api/company/jobs/all` | No | Get all jobs (public) |
+| PUT | `/api/company/jobs/:id` | Yes (recruiter) | Update a job |
+| DELETE | `/api/company/jobs/:id` | Yes (recruiter) | Delete a job |
 
-```powershell
-Invoke-RestMethod -Uri "http://localhost:4000/api/admin/refresh-jobs" -Method Post
-```
+### Matching & Recommendations
 
-### `GET /api/admin/refresh-jobs/status`
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/match` | No | Match a candidate profile (resume upload + form fields) against stored jobs |
+| GET | `/api/recommendations/matches` | Yes | Recommended jobs for authenticated student |
 
-Checks whether a refresh worker is currently running.
+### Applications (`/api/applications`)
 
-```powershell
-Invoke-RestMethod -Uri "http://localhost:4000/api/admin/refresh-jobs/status"
-```
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/applications/apply` | Yes (student) | Apply to a job |
+| GET | `/api/applications/my-applications` | Yes | Get student's applications |
+| GET | `/api/applications/:id` | Yes | Get application details |
+| POST | `/api/applications/:id/withdraw` | Yes (student) | Withdraw an application |
 
-### `GET /api/admin/scraper-runs`
+### Notifications (`/api/notifications`)
 
-Returns recent scraper runs with per-source status, cards seen, extracted jobs, and error messages.
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/notifications` | Yes | Get user's notifications + unread count |
+| PATCH | `/api/notifications/:id/read` | Yes | Mark notification as read |
+| POST | `/api/notifications/read-all` | Yes | Mark all notifications as read |
 
-```powershell
-Invoke-RestMethod -Uri "http://localhost:4000/api/admin/scraper-runs?limit=10"
-```
+### Admin (`/api/admin`)
 
-### `POST /api/feedback`
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| GET | `/api/admin/dashboard` | Yes (admin) | Platform analytics dashboard |
+| GET | `/api/admin/students` | Yes (admin) | List all students |
+| GET | `/api/admin/recruiters` | Yes (admin) | List all recruiters |
+| PUT | `/api/admin/recruiters/:id/verify` | Yes (admin) | Verify a recruiter |
+| GET | `/api/admin/jobs` | Yes (admin) | List all jobs |
+| GET | `/api/admin/applications` | Yes (admin) | List all applications |
+| PUT | `/api/admin/users/:id/suspend` | Yes (admin) | Suspend a user |
+| POST | `/api/admin/refresh-jobs` | Yes | Queue a background job refresh |
+| GET | `/api/admin/refresh-jobs/status` | No | Check if refresh worker is running |
+| GET | `/api/admin/scraper-runs` | No | Recent scraper run logs |
+| GET | `/api/admin/job-stats` | No | Job inventory statistics |
 
-Stores recommendation feedback for later ranking analysis.
+### System
 
-Supported actions:
+| Method | Route | Auth | Description |
+|--------|-------|------|-------------|
+| POST | `/api/feedback` | No | Submit recommendation feedback (relevant, not_relevant, too_senior, wrong_location, saved, applied) |
+| GET | `/api/health` | No | Health check (database + schema) |
 
-- `relevant`
-- `not_relevant`
-- `too_senior`
-- `wrong_location`
-- `saved`
-- `applied`
-
-### `GET /api/health`
-
-Checks database connectivity and schema readiness.
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:4000/api/health"
-```
-
-## Job Scraping
-
-Jobs are accessed by scraping configured live job sources. The active sources are controlled by `JOB_SOURCES` in `.env`.
-
-Default active sources:
-
-```text
-LinkedIn,Internshala,Indeed,Glassdoor,WeWorkRemotely
-```
-
-The crawler code also contains source definitions for:
-
-- RemoteOK
-- WeWorkRemotely
-- Internshala
-- LinkedIn
-- Wellfound
-- Foundit
-- Naukri
-- Indeed
-- Glassdoor
-
-Each source definition builds search URLs from the candidate/default profile, crawls result pages, extracts job fields, filters invalid URLs, and deduplicates results.
-
-Extracted job fields include:
-
-- Title
-- Company
-- Location
-- Salary, when available
-- Job type
-- Work mode
-- Apply URL
-- Description
-- Skills, when available
-- Source platform
-- Posted date, when available
-
-## Configurable Rules
-
-Most tuning data has been moved out of source code and into config files:
-
-```text
-config/app.json
-config/rules.json
-config/scoring.json
-config/sources.json
-```
-
-Environment variables can still override deployment-specific values such as `JOB_SOURCES`, `JOB_TERM_LIMIT`, `SCRAPE_CRON`, and `SCRAPE_TIMEZONE`.
-
-`config/sources.json` controls which sources are enabled, whether they use Cheerio or Playwright, and the search URL templates used for each platform. Source-specific extraction logic still lives in code because each site has different markup and interaction behavior, but simple source changes no longer require touching crawler code.
-
-## Enrichment
-
-`utils/enrichment.js` adds structured fields to jobs and profiles using rules loaded from `config/rules.json`. This is rule-based enrichment, not a chat LLM.
-
-For jobs, it infers:
-
-- `role_family`
-- `seniority`
-- `remote_type`
-- `minimum_experience_years`
-- `required_skills`
-- `nice_to_have_skills`
-
-For profiles, it infers:
-
-- Normalized skills
-- `roleFamily`
-- `seniority`
-
-Examples of role families:
-
-- Frontend Engineering
-- Backend Engineering
-- Full Stack Engineering
-- Data and Analytics
-- AI and Machine Learning
-- Cloud and DevOps
-- Mobile Engineering
-- Product and Design
-
-## Embeddings and LLM Usage
-
-The default `.env` uses local embeddings:
-
-```text
-EMBEDDING_PROVIDER=local
-LOCAL_EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
-EMBEDDING_DIMENSIONS=384
-```
-
-The local model is loaded through `@xenova/transformers`:
-
-```text
-pipeline("feature-extraction", "Xenova/all-MiniLM-L6-v2")
-```
-
-It uses mean pooling and normalized vectors.
-
-No chat/completion LLM is used by default. Recommendation explanations are generated by deterministic JavaScript logic in `utils/jobAggregator.js`.
-
-Optional OpenAI embeddings are supported:
-
-```text
-EMBEDDING_PROVIDER=openai
-OPENAI_API_KEY=your_key
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-EMBEDDING_DIMENSIONS=1536
-```
-
-When using OpenAI embeddings, existing stored jobs must have matching vector dimensions. If the database already contains jobs embedded with a different dimension, clear or re-embed jobs before switching providers.
+---
 
 ## Database
 
-The app uses PostgreSQL with `pgvector`.
+PostgreSQL 16 with `pgvector` extension. The schema is created and migrated at runtime by `ensureSchema()` in `backend/utils/db.js`.
 
-Main table: `jobs`
+### Core Tables
 
-Important columns:
-
-```text
-id
-url_hash
-source
-source_platform
-title
-company
-location
-salary
-job_type
-work_mode
-apply_url
-description
-skills
-posted_date
-role_family
-seniority
-remote_type
-minimum_experience_years
-required_skills
-nice_to_have_skills
-embedding
-created_at
-updated_at
-```
-
-Scraper observability tables:
-
-```text
-scraper_runs
-scraper_source_results
-```
-
-The embedding column is:
-
-```text
-embedding vector(384)
-```
-
-when using the default local MiniLM model.
+| Table | Purpose |
+|-------|---------|
+| `users` | User accounts (student, recruiter, admin roles) |
+| `student_profiles` | Student details, skills, resume text, profile completion |
+| `recruiter_profiles` | Recruiter details linked to companies |
+| `companies` | Company information |
+| `jobs` | Scraped and recruiter-posted jobs with `embedding vector(384)` |
+| `applications` | Student applications with status tracking |
+| `application_status_history` | Audit log of status changes |
+| `resumes` | Uploaded resume files and parsed data |
+| `notifications` | Per-user notification feed |
+| `recommendation_feedback` | Feedback on job recommendations |
+| `scraper_runs` | Scraper execution logs |
+| `scraper_source_results` | Per-source scraping results |
 
 Vector search uses cosine distance:
 
@@ -340,175 +194,238 @@ Vector search uses cosine distance:
 ORDER BY embedding <=> $1::vector
 ```
 
-The schema is created and migrated at runtime by `ensureSchema()` in `utils/db.js`.
+An HNSW index accelerates similarity searches:
+
+```sql
+CREATE INDEX ON jobs USING hnsw (embedding vector_cosine_ops);
+```
+
+---
 
 ## Recommendation Scoring
 
-The app does not display raw vector similarity as the final score. It combines semantic similarity with structured matching.
+The app combines semantic similarity with structured matching. Weights from `config/scoring.json`:
 
-Current weighted score from `config/scoring.json`:
+| Factor | Weight |
+|--------|--------|
+| Skills match | 32% |
+| Semantic similarity | 32% |
+| Seniority fit | 12% |
+| Role family | 10% |
+| Location | 10% |
+| Work mode | 4% |
 
-```text
-35% skills
-25% semantic similarity / role text overlap
-10% role family
-12% seniority fit
-10% location
-8% work mode
+The frontend shows the final score and a match breakdown per job.
+
+---
+
+## Job Scraping
+
+Jobs are scraped from configured live sources using Crawlee (Cheerio for static, Playwright for JavaScript-heavy sites).
+
+**Default active sources:** LinkedIn, Internshala, Indeed, Glassdoor, WeWorkRemotely
+
+**Also configured:** RemoteOK, Wellfound, Foundit, Naukri
+
+Each source builds search URLs from a candidate/default profile, crawls result pages, extracts job fields, filters invalid URLs, and deduplicates results.
+
+Extracted fields: title, company, location, salary, job type, work mode, apply URL, description, skills, source platform, posted date.
+
+Active sources are controlled by the `JOB_SOURCES` environment variable. Source definitions (search URL templates, crawler type) are in `config/sources.json`.
+
+---
+
+## Enrichment
+
+`utils/enrichment.js` adds structured fields to jobs and profiles using rules from `config/rules.json`. This is rule-based enrichment, not an LLM.
+
+**For jobs:** role_family, seniority, remote_type, minimum_experience_years, required_skills, nice_to_have_skills
+
+**For profiles:** Normalized skills, roleFamily, seniority
+
+Role families include: Frontend Engineering, Backend Engineering, Full Stack Engineering, Data & Analytics, AI/ML, Cloud & DevOps, Mobile Engineering, Product & Design.
+
+---
+
+## Embeddings
+
+Default (local, no-cost):
+
+| Variable | Value |
+|----------|-------|
+| `EMBEDDING_PROVIDER` | `local` |
+| `LOCAL_EMBEDDING_MODEL` | `Xenova/all-MiniLM-L6-v2` |
+| `EMBEDDING_DIMENSIONS` | `384` |
+
+Optional (OpenAI):
+
+| Variable | Value |
+|----------|-------|
+| `EMBEDDING_PROVIDER` | `openai` |
+| `OPENAI_API_KEY` | your key |
+| `OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` |
+| `EMBEDDING_DIMENSIONS` | `1536` |
+
+When switching providers, ensure existing job embeddings match the new dimension or re-embed all jobs. No chat/completion LLM is used by default — explanations are deterministic.
+
+---
+
+## Background Worker
+
+Scraping and embedding run in an isolated worker process (`workers/jobRefreshWorker.js`), keeping crawler work out of the request path. The scheduler (`scheduler/scrapeScheduler.js`) triggers a refresh every 6 hours via cron:
+
+```
+0 */6 * * * (Asia/Kolkata)
 ```
 
-The frontend shows the final score and a match breakdown for each job.
+Run manually:
 
-Example:
-
-```text
-Score: 91
-Role family: Frontend Engineering
-Seniority: Entry Level
-Remote type: Hybrid
-Breakdown:
-  Skills: 100
-  Semantic: 77
-  Role: 100
-  Seniority: 100
-  Location: 100
-  Mode: 55
+```powershell
+npm run worker:refresh
+npm run scrape
 ```
+
+---
 
 ## Setup
 
-Install dependencies:
+### Prerequisites
+
+- Node.js 18+
+- Docker (for PostgreSQL)
+- npm
+
+### Local Development
 
 ```powershell
+# Install backend dependencies
+cd backend
 npm install
-```
 
-Start PostgreSQL:
-
-```powershell
+# Start PostgreSQL
 docker compose up -d postgres
-```
 
-Start the app:
+# Copy and configure .env
+cp .env.example .env
 
-```powershell
+# Start the API Gateway (port 4001)
 npm start
+
+# In a separate terminal — start the Next.js frontend (port 3000)
+cd frontend
+npm install
+npm run dev
 ```
 
-Open:
+Visit `http://localhost:3000` for the new frontend or `http://localhost:4001` for the API.
 
-```text
-http://localhost:4000
-```
-
-## Full Docker Run
-
-Build and start the full stack:
+### Docker (full stack)
 
 ```powershell
 docker compose up --build
 ```
 
-Stop the stack:
+### Environment Variables (`.env`)
 
-```powershell
-docker compose down
-```
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `PORT` | `4001` | API Gateway port |
+| `DATABASE_URL` | `postgres://career_align:career_align@localhost:5432/career_align` | PostgreSQL connection |
+| `FRONTEND_URL` | `http://localhost:3000` | CORS origin |
+| `EMBEDDING_PROVIDER` | `local` | `local` or `openai` |
+| `EMBEDDING_DIMENSIONS` | `384` | Must match the model |
+| `JOB_SOURCES` | `LinkedIn,Internshala,Indeed,Glassdoor,WeWorkRemotely` | Active sources |
+| `JOB_TERM_LIMIT` | `6` | Max search terms |
+| `SCRAPE_CRON` | `0 */6 * * *` | Schedule |
+| `SCRAPE_TIMEZONE` | `Asia/Kolkata` | Cron timezone |
+
+Full example in `.env.example`.
+
+---
 
 ## Useful Commands
 
-Start in development mode:
-
 ```powershell
+# Start backend in dev mode (auto-restart)
 npm run dev
-```
 
-Scrape jobs manually:
-
-```powershell
+# Scrape jobs manually
 npm run scrape
-```
 
-Refresh jobs through the API:
+# Re-embed all jobs
+npm run reembed
 
-```powershell
-Invoke-RestMethod -Uri "http://localhost:4000/api/admin/refresh-jobs" -Method Post
-```
-
-Check health:
-
-```powershell
-Invoke-RestMethod -Uri "http://localhost:4000/api/health"
-```
-
-Start database only:
-
-```powershell
-npm run db:up
-```
-
-Stop database:
-
-```powershell
-npm run db:down
-```
-
-## Environment Variables
-
-Example:
-
-```text
-PORT=4000
-DATABASE_URL=postgres://career_align:career_align@localhost:5432/career_align
-EMBEDDING_PROVIDER=local
-LOCAL_EMBEDDING_MODEL=Xenova/all-MiniLM-L6-v2
-EMBEDDING_DIMENSIONS=384
-OPENAI_API_KEY=
-OPENAI_BASE_URL=https://api.openai.com/v1
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
-JOB_SOURCES=LinkedIn,Internshala,Indeed,Glassdoor,WeWorkRemotely
-JOB_TERM_LIMIT=6
-```
-
-## Background Worker And Scheduler
-
-Scraping and embedding now run through `workers/jobRefreshWorker.js`, started by `utils/jobRefreshQueue.js`. This keeps crawler and embedding work out of the request path and out of the main web server process.
-
-`scheduler/scrapeScheduler.js` queues a background refresh every 6 hours:
-
-```text
-0 */6 * * *
-```
-
-Timezone:
-
-```text
-Asia/Kolkata
-```
-
-The scheduled job uses the default profile from `config/app.json` to refresh general job inventory.
-
-Run the worker directly:
-
-```powershell
+# Run background worker directly
 npm run worker:refresh
+
+# Smoke test recommendations
+npm run test:recommendations
+
+# Database
+npm run db:up       # Start PostgreSQL
+npm run db:down     # Stop PostgreSQL
+
+# Health check
+Invoke-RestMethod -Uri "http://localhost:4001/api/health"
+
+# Trigger job refresh
+Invoke-RestMethod -Uri "http://localhost:4001/api/admin/refresh-jobs" -Method Post
 ```
+
+---
+
+## Configuration
+
+All tuning data lives in JSON config files under `backend/config/`:
+
+| File | Purpose |
+|------|---------|
+| `app.json` | Default profile, job sources, search terms, scheduler settings |
+| `rules.json` | Skill aliases, role family mapping, seniority rules, resume parsing rules |
+| `scoring.json` | Recommendation weights, thresholds, result limits |
+| `sources.json` | Source enablement, crawler type, search URL templates |
+
+Environment variables override deployment-specific values (`JOB_SOURCES`, `JOB_TERM_LIMIT`, `SCRAPE_CRON`, etc.).
+
+---
+
+## Key Files
+
+| File | Purpose |
+|------|---------|
+| `backend/gateway/index.js` | API Gateway — entry point, route mounting, middleware |
+| `backend/services/*/routes.js` | Microservice route modules (auth, student, company, recruiter, matching, recommendation, application, admin, notifications) |
+| `backend/utils/db.js` | PostgreSQL client, schema creation, all CRUD operations |
+| `backend/utils/embeddings.js` | Local/OpenAI embedding generation |
+| `backend/utils/enrichment.js` | Skill, role, seniority enrichment |
+| `backend/utils/jobAggregator.js` | Recommendation orchestration and scoring |
+| `backend/utils/jobRefreshQueue.js` | Background worker lifecycle management |
+| `backend/utils/sourceCrawlers.js` | Job board scrapers (Crawlee) |
+| `backend/utils/resumeParser.js` | Resume text extraction (PDF, DOCX, TXT) |
+| `backend/workers/jobRefreshWorker.js` | Isolated scraping and embedding worker |
+| `backend/scheduler/scrapeScheduler.js` | Cron-based scheduler (every 6 hours) |
+| `backend/utils/auth.js` | JWT auth, password hashing, role guard |
+| `frontend/src/app/` | Next.js App Router pages |
+| `frontend/src/components/` | React components (Navbar, Sidebar, JobCard, etc.) |
+| `public/` | Legacy HTML/JS frontend |
+| `db/init.sql` | Database initialization script |
+| `render.yaml` | Render deployment configuration |
+
+---
 
 ## Current Limitations
 
-- Some job boards expose limited details on search pages, so skill extraction may be incomplete.
 - Scraping can break if source websites change their markup or block crawlers.
-- Recommendation explanations are deterministic templates, not LLM-generated summaries.
-- There are no user accounts, saved-job dashboards, or application tracking yet.
-- Feedback is stored, but ranking does not yet learn from it automatically.
-- The worker is process-based; a production version should use a durable queue such as BullMQ, RabbitMQ, or a managed job runner.
+- Some job boards expose limited details on search pages, so skill extraction may be incomplete.
+- Recommendation explanations are deterministic templates, not LLM-generated.
+- The background worker is process-based; a production version should use a durable queue (BullMQ, RabbitMQ).
+- Feedback is stored but ranking does not yet learn from it automatically.
 
 ## Suggested Next Improvements
 
-- Add user accounts and saved/applied jobs.
 - Add filters for role, location, seniority, source, and work mode.
 - Fetch full job-detail pages where possible.
 - Add stale-job expiry.
 - Add source reliability and job freshness scoring.
 - Use stored feedback to adjust ranking weights per user and globally.
-- Use an LLM only for grounded enrichment/explanations, while keeping embeddings and structured fields as the source of truth.
+- Use an LLM for grounded enrichment/explanations while keeping embeddings as the source of truth.
