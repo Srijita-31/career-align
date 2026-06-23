@@ -180,35 +180,24 @@ const sourceDefinitions = [
     type: sourceSettings.get('Internshala')?.type || 'playwright',
     buildUrls: (terms, profile) => buildSourceUrls('Internshala', terms, profile),
     extract: async (page, request) => {
-      await page.waitForSelector('.individual_internship.view_detail_button', { timeout: 30000 });
-      await page.waitForTimeout(1200);
-      const jobs = await page.$$eval('.individual_internship.view_detail_button', (nodes) =>
-        nodes.map((node) => {
-          const title = node.querySelector('a.job-title-href')?.innerText?.trim() || '';
-          const company = node.querySelector('.company-name')?.innerText?.trim() || '';
-          const location = node.querySelector('.row-1-item.locations span')?.innerText?.trim() || node.querySelector('.row-1-item.locations')?.innerText?.trim() || 'India';
-          const apply_url = node.querySelector('a.job-title-href')?.href || node.getAttribute('data-href') || '';
-          const description = node.querySelector('.about_job .text')?.innerText?.trim() || '';
-          const tags = Array.from(node.querySelectorAll('.job_skill')).map((tag) => tag.innerText.trim());
-          const postedDate = node.querySelector('.detail-row-2 .status-success span')?.innerText?.trim() || '';
-          const jobType = /intern|internship|trainee|fresher/.test(title + description) ? 'Internship' : 'Full-time';
-
-          return {
-            title,
-            company,
-            location,
-            salary: node.querySelector('.stipend')?.innerText?.trim() || '',
-            job_type: jobType,
-            work_mode: inferWorkMode({ title, location, description }),
-            apply_url,
-            description,
-            skills: tags,
-            source_platform: 'Internshala',
-            posted_date: postedDate,
-          };
-        }),
-      );
-      return { cards: jobs.length, jobs };
+      await page.waitForTimeout(5000);
+      const raw = await page.evaluate(() => {
+        const cards = document.querySelectorAll('.internship_meta, .individual_internship, .internship_list_tuple, [id^="internship_"], .container-fluid .internship_meta, .job-card, article.card, .listing-card');
+        return Array.from(cards).map((node) => {
+          const title = node.querySelector('a[class*="title"], .job-title-href, .internship-heading a, h3 a, a[href*="/internship/"], .heading a, h3, .job-title')?.innerText?.trim() || '';
+          const company = node.querySelector('.company-name, a[class*="company"], .company, [class*="company"] a, .company_name, .employer')?.innerText?.trim() || '';
+          const location = node.querySelector('[class*="location"] span, [class*="location"], .locations span, .location-text')?.innerText?.trim() || 'India';
+          const link = node.querySelector('a[class*="title"], .job-title-href, a[href*="/internship/"], a[href*="/jobs/"]')?.href || '';
+          const apply_url = link || node.querySelector('a')?.href || '';
+          const description = node.querySelector('[class*="about"] .text, [class*="description"], .job_details, .detail-about')?.innerText?.trim() || '';
+          const tags = Array.from(node.querySelectorAll('[class*="skill"], .round_tabs a, .round_tabs span, .skill-tag, .label')).map((tag) => tag.innerText.trim());
+          const postedDate = node.querySelector('[class*="posted"], [class*="status"] span, .posting-date')?.innerText?.trim() || '';
+          const stipend = node.querySelector('[class*="stipend"], [class*="salary"], .stipend')?.innerText?.trim() || '';
+          return { title, company, location, salary: stipend, job_type: 'Internship', apply_url, description, skills: tags, source_platform: 'Internshala', posted_date: postedDate };
+        });
+      });
+      const jobs = raw.map(job => ({ ...job, work_mode: inferWorkMode({ title: job.title, location: job.location, description: job.description }) }));
+      return { cards: raw.length, jobs };
     },
   },
   {
@@ -262,7 +251,7 @@ const sourceDefinitions = [
     extract: async (page) => {
       await page.waitForSelector('a[data-test-job-tile], li[data-testid="job-card"], li.job-card', { timeout: 30000 });
       await page.waitForTimeout(1600);
-      const jobs = await page.$$eval('a[data-test-job-tile], li[data-testid="job-card"], li.job-card', (nodes) =>
+      const raw = await page.$$eval('a[data-test-job-tile], li[data-testid="job-card"], li.job-card', (nodes) =>
         nodes.map((node) => {
           const title = node.querySelector('h3')?.innerText?.trim() || node.querySelector('.job-title')?.innerText?.trim() || '';
           const company = node.querySelector('h4')?.innerText?.trim() || node.querySelector('.company-name')?.innerText?.trim() || '';
@@ -272,23 +261,10 @@ const sourceDefinitions = [
           const tags = Array.from(node.querySelectorAll('.tag, .skill-pill')).map((tag) => tag.innerText.trim());
           const postedDate = node.querySelector('time')?.innerText?.trim() || '';
           const jobType = /intern|internship|trainee|fresher/.test(title + description) ? 'Internship' : 'Full-time';
-          const workMode = inferWorkMode({ title, location, description });
-
-          return {
-            title,
-            company,
-            location: location || 'India',
-            salary: '',
-            job_type: jobType,
-            work_mode: workMode,
-            apply_url,
-            description,
-            skills: tags,
-            source_platform: 'Wellfound',
-            posted_date: postedDate,
-          };
+          return { title, company, location: location || 'India', salary: '', job_type: jobType, apply_url, description, skills: tags, source_platform: 'Wellfound', posted_date: postedDate };
         }),
       );
+      const jobs = raw.map(job => ({ ...job, work_mode: inferWorkMode({ title: job.title, location: job.location, description: job.description }) }));
       return { cards: jobs.length, jobs };
     },
   },
@@ -298,34 +274,22 @@ const sourceDefinitions = [
     type: sourceSettings.get('Foundit')?.type || 'playwright',
     buildUrls: (terms, profile) => buildSourceUrls('Foundit', terms, profile),
     extract: async (page) => {
-      await page.waitForSelector('article.job-card, .job-tile, .job-card', { timeout: 30000 });
+      await page.waitForSelector('article.job-card, .job-tile, .job-card, .jobSearchCard', { timeout: 30000 });
       await page.waitForTimeout(1200);
-      const jobs = await page.$$eval('article.job-card, .job-tile, .job-card', (nodes) =>
+      const raw = await page.$$eval('article.job-card, .job-tile, .job-card, .jobSearchCard', (nodes) =>
         nodes.map((node) => {
-          const title = node.querySelector('h2.job-title, .job-title, .jobCard-title')?.innerText?.trim() || '';
-          const company = node.querySelector('.company-name, .job-card__company-name')?.innerText?.trim() || '';
-          const location = node.querySelector('.job-location, .jobCard-location')?.innerText?.trim() || '';
+          const title = node.querySelector('h2.job-title, .job-title, .jobCard-title, .jobTitle')?.innerText?.trim() || '';
+          const company = node.querySelector('.company-name, .job-card__company-name, .companyInfo')?.innerText?.trim() || '';
+          const location = node.querySelector('.job-location, .jobCard-location, .location')?.innerText?.trim() || '';
           const apply_url = node.querySelector('a')?.href || '';
-          const description = node.querySelector('.job-summary, .job-description')?.innerText?.trim() || '';
-          const tags = Array.from(node.querySelectorAll('ul.skill-tags li, .skills li')).map((tag) => tag.innerText.trim());
+          const description = node.querySelector('.job-summary, .job-description, .jobDesc')?.innerText?.trim() || '';
+          const tagEls = node.querySelectorAll('ul.skill-tags li, .skills li, .skill');
+          const tags = tagEls ? Array.from(tagEls).map((tag) => tag.innerText.trim()) : [];
           const jobType = /intern|internship|trainee|fresher/.test(title + description) ? 'Internship' : 'Full-time';
-          const workMode = inferWorkMode({ title, location, description });
-
-          return {
-            title,
-            company,
-            location: location || 'India',
-            salary: '',
-            job_type: jobType,
-            work_mode: workMode,
-            apply_url,
-            description,
-            skills: tags,
-            source_platform: 'Foundit',
-            posted_date: '',
-          };
+          return { title, company, location: location || 'India', salary: '', job_type: jobType, apply_url, description, skills: tags, source_platform: 'Foundit', posted_date: '' };
         }),
       );
+      const jobs = raw.map(job => ({ ...job, work_mode: inferWorkMode({ title: job.title, location: job.location, description: job.description }) }));
       return { cards: jobs.length, jobs };
     },
   },
@@ -335,36 +299,24 @@ const sourceDefinitions = [
     type: sourceSettings.get('Naukri')?.type || 'playwright',
     buildUrls: (terms, profile) => buildSourceUrls('Naukri', terms, profile),
     extract: async (page) => {
-      await page.waitForSelector('.srp-jobtuple-wrapper, div.jobTuple, .jobTuple, article.jobTuple', { timeout: 30000 });
+      await page.waitForSelector('.srp-jobtuple-wrapper, div.jobTuple, .jobTuple, article.jobTuple, .job-card', { timeout: 30000 });
       await page.waitForTimeout(1400);
-      const jobs = await page.$$eval('.srp-jobtuple-wrapper, div.jobTuple, .jobTuple, article.jobTuple', (nodes) =>
+      const raw = await page.$$eval('.srp-jobtuple-wrapper, div.jobTuple, .jobTuple, article.jobTuple, .job-card', (nodes) =>
         nodes.map((node) => {
-          const titleAnchor = node.querySelector('a.title, .title a, a[href*="/job-listings-"]');
+          const titleAnchor = node.querySelector('a.title, .title a, a[href*="/job-listings-"], a[href*="/jobs/"]');
           const title = titleAnchor?.innerText?.trim() || node.querySelector('.title')?.innerText?.trim() || '';
-          const company = node.querySelector('a.comp-name, a.subTitle, .companyInfo .subTitle, .companyName')?.innerText?.trim() || '';
-          const location = node.querySelector('.locWdth, li.location, .location')?.innerText?.trim() || '';
+          const company = node.querySelector('a.comp-name, a.subTitle, .companyInfo .subTitle, .companyName, .company')?.innerText?.trim() || '';
+          const location = node.querySelector('.locWdth, li.location, .location, .job-location')?.innerText?.trim() || '';
           const apply_url = titleAnchor?.href || '';
-          const description = node.querySelector('.job-desc, div.job-description, .job-description')?.innerText?.trim() || '';
-          const tags = Array.from(node.querySelectorAll('ul.tags-gt li, ul.tags li, .tags li')).map((tag) => tag.innerText.trim());
-          const salary = node.querySelector('.sal-wrap, .salary, li.salary')?.innerText?.trim() || '';
+          const description = node.querySelector('.job-desc, div.job-description, .job-description, .job-description-text')?.innerText?.trim() || '';
+          const tagEls = node.querySelectorAll('ul.tags-gt li, ul.tags li, .tags li, .skill');
+          const tags = tagEls ? Array.from(tagEls).map((tag) => tag.innerText.trim()) : [];
+          const salary = node.querySelector('.sal-wrap, .salary, li.salary, .salary')?.innerText?.trim() || '';
           const jobType = /intern|internship|trainee|fresher/.test(title + description) ? 'Internship' : 'Full-time';
-          const workMode = inferWorkMode({ title, location, description });
-
-          return {
-            title,
-            company,
-            location: location || 'India',
-            salary,
-            job_type: jobType,
-            work_mode: workMode,
-            apply_url,
-            description,
-            skills: tags,
-            source_platform: 'Naukri',
-            posted_date: '',
-          };
+          return { title, company, location: location || 'India', salary, job_type: jobType, apply_url, description, skills: tags, source_platform: 'Naukri', posted_date: '' };
         }),
       );
+      const jobs = raw.map(job => ({ ...job, work_mode: inferWorkMode({ title: job.title, location: job.location, description: job.description }) }));
       return { cards: jobs.length, jobs };
     },
   },
@@ -374,9 +326,9 @@ const sourceDefinitions = [
     type: sourceSettings.get('Indeed')?.type || 'playwright',
     buildUrls: (terms, profile) => buildSourceUrls('Indeed', terms, profile),
     extract: async (page) => {
-      await page.waitForSelector('div.job_seen_beacon, a[data-jk], .jobsearch-SerpJobCard', { timeout: 30000 });
-      await page.waitForTimeout(1400);
-      const jobs = await page.$$eval('div.job_seen_beacon, .jobsearch-SerpJobCard', (nodes) =>
+      await page.waitForSelector('div.job_seen_beacon, a[data-jk], .jobsearch-SerpJobCard, li.css-5lfmz4, .job-card', { timeout: 30000 });
+      await page.waitForTimeout(2000);
+      const raw = await page.$$eval('div.job_seen_beacon, .jobsearch-SerpJobCard, li.css-5lfmz4', (nodes) =>
         nodes.map((node) => {
           const anchor = node.querySelector('h2.jobTitle a, a[data-jk], a.jcs-JobTitle');
           const title = anchor?.innerText?.replace(/\bnew\b/i, '').trim() || '';
@@ -387,22 +339,10 @@ const sourceDefinitions = [
           const description = node.querySelector('.job-snippet, [data-testid="jobsnippet"]')?.innerText?.trim() || '';
           const salary = node.querySelector('.salary-snippet-container, [data-testid="attribute_snippet_testid"]')?.innerText?.trim() || '';
           const jobType = /intern|internship|trainee|fresher/i.test(title + description) ? 'Internship' : 'Full-time';
-
-          return {
-            title,
-            company,
-            location,
-            salary,
-            job_type: jobType,
-            work_mode: inferWorkMode({ title, location, description }),
-            apply_url,
-            description,
-            skills: [],
-            source_platform: 'Indeed',
-            posted_date: '',
-          };
+          return { title, company, location, salary, job_type: jobType, apply_url, description, skills: [], source_platform: 'Indeed', posted_date: '' };
         }),
       );
+      const jobs = raw.map(job => ({ ...job, work_mode: inferWorkMode({ title: job.title, location: job.location, description: job.description }) }));
       return { cards: jobs.length, jobs };
     },
   },
@@ -412,9 +352,9 @@ const sourceDefinitions = [
     type: sourceSettings.get('Glassdoor')?.type || 'playwright',
     buildUrls: (terms, profile) => buildSourceUrls('Glassdoor', terms, profile),
     extract: async (page) => {
-      await page.waitForSelector('[data-test="jobListing"], li[data-test="jobListing"], .JobsList_jobListItem__wjTHv', { timeout: 30000 });
-      await page.waitForTimeout(1400);
-      const jobs = await page.$$eval('[data-test="jobListing"], li[data-test="jobListing"], .JobsList_jobListItem__wjTHv', (nodes) =>
+      await page.waitForSelector('[data-test="jobListing"], li[data-test="jobListing"], .JobsList_jobListItem__wjTHv, .jobListing', { timeout: 30000 });
+      await page.waitForTimeout(2000);
+      const raw = await page.$$eval('[data-test="jobListing"], li[data-test="jobListing"], .JobsList_jobListItem__wjTHv, .jobListing', (nodes) =>
         nodes.map((node) => {
           const anchor = node.querySelector('a[data-test="job-link"], a[href*="/job-listing/"], a[href*="/partner/jobListing"]');
           const title = node.querySelector('[data-test="job-title"], a[data-test="job-link"]')?.innerText?.trim() || anchor?.innerText?.trim() || '';
@@ -425,22 +365,10 @@ const sourceDefinitions = [
           const salary = node.querySelector('[data-test="detailSalary"], .JobCard_salaryEstimate__QpbTW')?.innerText?.trim() || '';
           const description = [title, company, location, salary].filter(Boolean).join(' - ');
           const jobType = /intern|internship|trainee|fresher/i.test(title) ? 'Internship' : 'Full-time';
-
-          return {
-            title,
-            company,
-            location,
-            salary,
-            job_type: jobType,
-            work_mode: inferWorkMode({ title, location, description }),
-            apply_url,
-            description,
-            skills: [],
-            source_platform: 'Glassdoor',
-            posted_date: '',
-          };
+          return { title, company, location, salary, job_type: jobType, apply_url, description, skills: [], source_platform: 'Glassdoor', posted_date: '' };
         }),
       );
+      const jobs = raw.map(job => ({ ...job, work_mode: inferWorkMode({ title: job.title, location: job.location, description: job.description }) }));
       return { cards: jobs.length, jobs };
     },
   },
@@ -552,8 +480,8 @@ const scrapeSource = async (profile, source, options = {}) => {
     requestList,
     maxConcurrency: 1,
     maxRequestRetries: 0,
-    navigationTimeoutSecs: 30,
-    requestHandlerTimeoutSecs: 45,
+    navigationTimeoutSecs: 40,
+    requestHandlerTimeoutSecs: 60,
     requestHandler: async ({ request, response, $ , page }) => {
       log.info(`[SCRAPER] Scraping ${source.platform}: ${request.url}`);
       try {
@@ -588,29 +516,48 @@ const scrapeSource = async (profile, source, options = {}) => {
     ? new CheerioCrawler(crawlerOptions)
     : new PlaywrightCrawler({
         ...crawlerOptions,
+        maxRequestRetries: 1,
         launchContext: {
           launchOptions: {
             headless: true,
-            args: ['--no-sandbox', '--disable-setuid-sandbox'],
+            args: [
+              '--no-sandbox',
+              '--disable-setuid-sandbox',
+              '--disable-blink-features=AutomationControlled',
+              '--disable-web-security',
+              '--disable-features=IsolateOrigins,site-per-process',
+              '--disable-gpu',
+              '--disable-dev-shm-usage',
+            ],
           },
         },
         preNavigationHooks: [
-          async ({ page }) => {
-            await page.setViewportSize({ width: 1280, height: 900 });
+          async ({ page, crawler }) => {
+            const w = 1360 + Math.floor(Math.random() * 80);
+            const h = 850 + Math.floor(Math.random() * 50);
+            await page.setViewportSize({ width: w, height: h });
+            const ua = [
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/125.0.6422.142 Safari/537.36',
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0.6478.56 Safari/537.36',
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.6367.118 Safari/537.36',
+            ][Math.floor(Math.random() * 3)];
             await page.setExtraHTTPHeaders({
               'Accept-Language': 'en-US,en;q=0.9',
               'Upgrade-Insecure-Requests': '1',
-              'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0 Safari/537.36',
+              'User-Agent': ua,
             });
-            await page.route('**/*', (route) => {
-              const resourceType = route.request().resourceType();
-              if (['image', 'font', 'stylesheet'].includes(resourceType)) {
-                route.abort();
-              } else {
-                route.continue();
-              }
+            await page.addInitScript(() => {
+              Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+              Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+              Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+              Object.defineProperty(navigator, 'platform', { get: () => 'Win32' });
+              Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+              Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+              window.chrome = { runtime: {} };
+              const originalQuery = window.navigator.permissions.query;
+              window.navigator.permissions.query = (p) => p.name === 'notifications' ? Promise.resolve({ state: 'denied' }) : originalQuery(p);
             });
-            await page.waitForTimeout(250);
+            await page.waitForTimeout(1000 + Math.floor(Math.random() * 500));
           },
         ],
       });

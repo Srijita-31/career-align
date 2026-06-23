@@ -12,7 +12,9 @@ const {
   saveRecommendationFeedback
 } = require('../utils/db');
 const { getJobRefreshStatus, queueJobRefresh } = require('../utils/jobRefreshQueue');
+const { getScrapeStatus, setCurrentScrape } = require('../utils/scrapeState');
 const { startScrapeScheduler } = require('../scheduler/scrapeScheduler');
+const { refreshJobs } = require('../utils/scraperService');
 
 const app = express();
 const PORT = process.env.PORT || 4001; // Gateway port
@@ -57,7 +59,12 @@ app.use('/api/notifications', notificationService);
 app.use('/api/student/matches', recommendationService);
 
 // Admin / System endpoints
-app.get('/api/admin/refresh-jobs/status', (_, res) => res.json({ status: 'ok', refresh: getJobRefreshStatus() }));
+app.get('/api/admin/refresh-jobs/status', (_, res) => res.json({ status: 'ok', refresh: getJobRefreshStatus(), scrape: getScrapeStatus() }));
+app.get('/api/scrape-status', async (req, res) => {
+  const { getJobCount } = require('../utils/db');
+  const count = await getJobCount().catch(() => 0);
+  res.json({ status: 'ok', scrape: getScrapeStatus(), jobCount: count });
+});
 app.get('/api/admin/scraper-runs', async (req, res) => {
   try {
     const runs = await getRecentScraperRuns(req.query.limit);
@@ -106,6 +113,12 @@ ensureSchema()
   .then(() => {
     startScrapeScheduler();
     app.listen(PORT, () => console.log(`API Gateway running on http://localhost:${PORT}`));
+    
+    // Trigger live scrape immediately so users see real jobs
+    setCurrentScrape(refreshJobs(undefined, { reason: 'startup_live_scrape' })
+      .then(result => console.log(`[GATEWAY] Live scrape complete: ${result.scrapedCount} jobs from real sources`))
+      .catch(err => console.warn('[GATEWAY] Live scrape failed:', err.message))
+    );
     
     countStaleJobEmbeddings().then(count => {
       if (count > 0) {

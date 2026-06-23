@@ -146,7 +146,7 @@ const ensureSchema = async () => {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
-  await pool.query('TRUNCATE TABLE jobs RESTART IDENTITY CASCADE');
+  // Only truncate if embedding dimensions changed (handled by alignEmbeddingDimensions)
   await alignEmbeddingDimensions();
   await pool.query('CREATE INDEX IF NOT EXISTS jobs_embedding_hnsw_idx ON jobs USING hnsw (embedding vector_cosine_ops)');
   await pool.query(`
@@ -176,11 +176,18 @@ const ensureSchema = async () => {
       education JSONB DEFAULT '[]'::jsonb,
       experience JSONB DEFAULT '[]'::jsonb,
       projects JSONB DEFAULT '[]'::jsonb,
+      work_preference TEXT DEFAULT '',
+      experience_level TEXT DEFAULT '',
+      location_preference TEXT DEFAULT '',
       profile_completion_percentage INT NOT NULL DEFAULT 0,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     )
   `);
+  // Migrate: add missing columns if they don't exist
+  await pool.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS work_preference TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS experience_level TEXT DEFAULT ''`);
+  await pool.query(`ALTER TABLE student_profiles ADD COLUMN IF NOT EXISTS location_preference TEXT DEFAULT ''`);
   await pool.query(`
     CREATE TABLE IF NOT EXISTS recommendation_feedback (
       id BIGSERIAL PRIMARY KEY,
@@ -633,6 +640,33 @@ const getStudentProfileByUserId = async (userId) => {
   return r.rows[0] || null;
 };
 
+const updateStudentProfile = async (userId, fields) => {
+  await ensureSchema();
+  const existing = await getStudentProfileByUserId(userId);
+  if (!existing) throw new Error('Profile not found');
+  const { full_name, skills, target_roles, work_preference, experience_level, location_preference } = fields;
+  const r = await pool.query(`
+    UPDATE student_profiles SET
+      full_name = COALESCE($1, full_name),
+      skills = COALESCE($2::jsonb, skills),
+      target_roles = COALESCE($3::jsonb, target_roles),
+      work_preference = COALESCE($4, work_preference),
+      experience_level = COALESCE($5, experience_level),
+      location_preference = COALESCE($6, location_preference),
+      updated_at = NOW()
+    WHERE user_id = $7 RETURNING *
+  `, [
+    full_name || null,
+    skills ? JSON.stringify(skills) : null,
+    target_roles ? JSON.stringify(target_roles) : null,
+    work_preference || null,
+    experience_level || null,
+    location_preference || null,
+    userId
+  ]);
+  return r.rows[0];
+};
+
 const updateUserPassword = async (email, passwordHash) => {
   await ensureSchema();
   const r = await pool.query(`UPDATE users SET password_hash = $1 WHERE email = $2 RETURNING *`, [passwordHash, email]);
@@ -827,6 +861,7 @@ module.exports = {
   findUserByEmail,
   createStudentProfile,
   getStudentProfileByUserId,
+  updateStudentProfile,
   updateUserPassword,
   createCompany,
   getCompanyById,

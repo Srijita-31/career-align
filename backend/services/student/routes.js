@@ -1,5 +1,5 @@
 const express = require('express');
-const { createStudentProfile, getStudentProfileByUserId, getStudentDashboardData, calculateProfileCompletion } = require('../../utils/db');
+const { createStudentProfile, getStudentProfileByUserId, getStudentDashboardData, calculateProfileCompletion, updateStudentProfile } = require('../../utils/db');
 const { authMiddleware } = require('../../utils/auth');
 
 const router = express.Router();
@@ -28,6 +28,24 @@ router.get('/profile', authMiddleware, async (req, res) => {
     return res.json({ status: 'ok', profile });
   } catch (err) {
     console.error('Get profile error:', err);
+    return res.status(500).json({ status: 'error', message: err.message });
+  }
+});
+
+// Student Profile Setup (after registration)
+router.post('/profile/setup', authMiddleware, async (req, res) => {
+  const { id, role } = req.user;
+  if (role !== 'student') return res.status(403).json({ status: 'error', message: 'Only students may setup profiles.' });
+  try {
+    const existing = await getStudentProfileByUserId(id);
+    if (!existing) {
+      await createStudentProfile(id, null, []);
+    }
+    const profile = await updateStudentProfile(id, req.body);
+    await calculateProfileCompletion(id);
+    return res.json({ status: 'ok', profile });
+  } catch (err) {
+    console.error('Student profile setup error:', err);
     return res.status(500).json({ status: 'error', message: err.message });
   }
 });

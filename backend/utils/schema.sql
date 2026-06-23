@@ -69,6 +69,9 @@ CREATE TABLE IF NOT EXISTS student_profiles (
   education JSONB DEFAULT '[]'::jsonb,
   experience JSONB DEFAULT '[]'::jsonb,
   projects JSONB DEFAULT '[]'::jsonb,
+  work_preference TEXT NOT NULL DEFAULT '',
+  experience_level TEXT NOT NULL DEFAULT '',
+  location_preference TEXT NOT NULL DEFAULT '',
   profile_completion_percentage INT NOT NULL DEFAULT 0,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()

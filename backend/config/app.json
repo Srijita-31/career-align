@@ -4,7 +4,11 @@
     "Internshala",
     "Indeed",
     "Glassdoor",
-    "WeWorkRemotely"
+    "WeWorkRemotely",
+    "RemoteOK",
+    "Wellfound",
+    "Foundit",
+    "Naukri"
   ],
   "jobTermLimit": 6,
   "defaultSearchTerms": [

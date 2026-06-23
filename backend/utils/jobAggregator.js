@@ -7,6 +7,8 @@ const {
   unique,
 } = require('./enrichment');
 const { queueJobRefresh } = require('./jobRefreshQueue');
+const { waitForScrape, setCurrentScrape, getScrapeStatus } = require('./scrapeState');
+const { refreshJobs } = require('./scraperService');
 const { scoring } = require('../config');
 
 const STOPWORDS = new Set([
@@ -55,9 +57,18 @@ const ensureJobsAvailable = async (profile) => {
     return { scraped: false, totalPersisted: count };
   }
 
-  const queued = queueJobRefresh(profile, 'empty_inventory');
-  console.log('[AGGREGATOR] No persisted jobs found; queued background refresh', queued);
-  return { scraped: false, queuedRefresh: queued, totalPersisted: count };
+  // Trigger scrape if none running — the startup scrape may already be in progress
+  const status = getScrapeStatus();
+  if (!status.running) {
+    console.log('[AGGREGATOR] No persisted jobs found; triggering background scrape...');
+    const promise = refreshJobs(profile, { reason: 'on_demand', reembedExisting: false })
+      .catch(err => console.error('[AGGREGATOR] Background scrape failed:', err.message));
+    setCurrentScrape(promise);
+  } else {
+    console.log('[AGGREGATOR] No jobs yet but scrape already running in background...');
+  }
+
+  return { scraped: false, totalPersisted: 0, queued: true };
 };
 
 const isOpenAIQuotaError = (error) => {
